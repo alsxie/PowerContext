@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from itertools import chain
@@ -28,6 +29,7 @@ from powercontext.builtin.artifacts.memory.models import MemoryCitation, MemoryH
 from powercontext.builtin.artifacts.profile.models import Profile
 from powercontext.builtin.artifacts.topic_memory import TopicMemory, TopicMemorySearchHit
 from powercontext.builtin.runtime.errors import PreparedContextInvariantError
+from powercontext.builtin.runtime.evidence_selection import EvidenceDocument, select_evidence
 from powercontext.builtin.runtime.models import PrepareContextRequest, PreparedContext
 from powercontext.builtin.runtime.prepared_code import (
     CodeEvidenceRef,
@@ -106,6 +108,7 @@ class PreparedContextBuild:
     origins: tuple[PreparedContextOrigin, ...]
     omissions: PreparedContextOmissions = PreparedContextOmissions()
     code_origins: tuple[CodeEvidenceRef, ...] = ()
+    fragments: tuple[PreparedContextFragment, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -118,6 +121,19 @@ class MemoryEntryAddress:
 
 
 PreparedContextOrigin = MemoryCitation | ArtifactRef | MemoryEntryAddress | ArtifactAddress
+
+
+@dataclass(frozen=True)
+class PreparedContextFragment:
+    """A literal excerpt ``text == entry.text[start:end]`` of one exact Memory entry version.
+
+    ``start`` and ``end`` are half-open Python character offsets into the original entry text.
+    """
+
+    address: MemoryEntryAddress
+    start: int
+    end: int
+    text: str
 
 
 @dataclass(frozen=True)
@@ -211,6 +227,8 @@ class PreparedContextBuilder:
         profile_candidates: Sequence[PreparedProfileCandidate] = (),
         code_candidates: Sequence[PreparedCodeCandidate] = (),
     ) -> PreparedContextBuild:
+        if request.evidence_selection:
+            return self._build_evidence(request, current_scope_id, memory_candidates)
         if request.include_code:
 
             def historical(history_request: PrepareContextRequest, entries: int) -> PreparedContextBuild:
@@ -277,6 +295,15 @@ class PreparedContextBuilder:
         counters because both go through :meth:`_select_entries`.
         """
 
+        if request.evidence_selection:
+            build = self._build_evidence(request, current_scope_id, memory_candidates)
+            return RecallBudgetView(
+                max_bytes=request.max_bytes,
+                delivered_items=len(build.origins),
+                truncated_items=0,
+                dropped_items=0,
+                unused_bytes=request.max_bytes - build.context.content_bytes,
+            )
         content, origins, omissions = self._select_entries(
             request=request,
             current_scope_id=current_scope_id,
@@ -292,6 +319,78 @@ class PreparedContextBuilder:
             truncated_items=omissions.truncated_items,
             dropped_items=omissions.dropped_items,
             unused_bytes=max(0, request.max_bytes - content_bytes),
+        )
+
+    def _build_evidence(
+        self,
+        request: PrepareContextRequest,
+        current_scope_id: str | None,
+        memory_candidates: Sequence[PreparedMemoryCandidates],
+    ) -> PreparedContextBuild:
+        """Select query-relevant literal Memory fragments that fit the full output budget."""
+
+        if sum(len(candidates.hits) for candidates in memory_candidates) > self.memory_candidate_limit:
+            raise PreparedContextInvariantError("memory-candidate-limit")
+        addresses: list[MemoryEntryAddress] = []
+        texts: list[str] = []
+        seen: set[tuple[str, str, str, int, str, str]] = set()
+        seen_texts: set[tuple[str, str]] = set()
+        for group in _interleave_groups(
+            tuple(tuple((candidates, hit) for hit in candidates.hits) for candidates in memory_candidates)
+        ):
+            candidates, hit = group
+            if candidates.memory_ref is None:
+                raise PreparedContextInvariantError("memory-ref-missing")
+            if hit.memory_ref != candidates.memory_ref:
+                raise PreparedContextInvariantError("memory-ref-mismatch")
+            scope_id = candidates.scope_id or current_scope_id
+            if not scope_id:
+                raise PreparedContextInvariantError("evidence-scope-missing")
+            address = MemoryEntryAddress(
+                memory=ArtifactAddress(scope_id=scope_id, artifact=hit.memory_ref),
+                entry_id=hit.entry_id,
+                entry_version_id=hit.entry_version_id,
+            )
+            ref = hit.memory_ref
+            identity = (scope_id, ref.family, ref.artifact_id, ref.revision, hit.entry_id, hit.entry_version_id)
+            if identity in seen or (scope_id, hit.text) in seen_texts:
+                continue
+            seen.add(identity)
+            if not hit.entry_id.strip() or not hit.entry_version_id.strip() or not hit.text.strip():
+                continue
+            seen_texts.add((scope_id, hit.text))
+            addresses.append(address)
+            texts.append(hit.text)
+        base = len(_render_fragments(()).encode("utf-8"))
+        documents = tuple(
+            EvidenceDocument(text=text, item_overhead=_fragment_overhead(address, len(text)))
+            for address, text in zip(addresses, texts, strict=True)
+        )
+        spans = select_evidence(
+            request.query,
+            documents,
+            budget=request.max_bytes - base,
+            content_cost=_content_bytes,
+        )
+        fragments = [
+            PreparedContextFragment(
+                address=addresses[span.document],
+                start=span.start,
+                end=span.end,
+                text=texts[span.document][span.start : span.end],
+            )
+            for span in spans
+        ]
+        content = _render_fragments(fragments)
+        while fragments and len(content.encode("utf-8")) > request.max_bytes:
+            fragments.pop()
+            content = _render_fragments(fragments)
+        if not fragments:
+            return PreparedContextBuild(context=self.empty(), origins=())
+        return PreparedContextBuild(
+            context=PreparedContext(status="ready", content=content, content_bytes=len(content.encode("utf-8"))),
+            origins=tuple(fragment.address for fragment in fragments),
+            fragments=tuple(fragments),
         )
 
     def _select_entries(
@@ -728,3 +827,47 @@ def _truncate_utf8(text: str, byte_budget: int) -> str:
     prefix_budget = byte_budget - len(_ELLIPSIS.encode("utf-8"))
     encoded_prefix = text.encode("utf-8")[:prefix_budget]
     return f"{encoded_prefix.decode('utf-8', errors='ignore')}{_ELLIPSIS}"
+
+
+# ``str.splitlines`` treats these as line breaks, but ``json.dumps`` leaves them unescaped.
+_LINE_BREAK_ESCAPES = {"\u2028": "\\u2028", "\u2029": "\\u2029", "\x85": "\\u0085"}
+_LINE_BREAK_PATTERN = re.compile("[\u2028\u2029\x85]")
+
+
+def _json_text(value: object) -> str:
+    encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    return _LINE_BREAK_PATTERN.sub(lambda match: _LINE_BREAK_ESCAPES[match.group()], encoded)
+
+
+def _content_bytes(text: str) -> int:
+    return len(_json_text(text).encode("utf-8"))
+
+
+def _fragment_item(address: MemoryEntryAddress, start: int, end: int, text: str) -> dict[str, object]:
+    return {
+        "citation": {
+            "scope_id": address.memory.scope_id,
+            "memory_ref": address.memory.artifact.model_dump(mode="json"),
+            "entry_id": address.entry_id,
+            "entry_version_id": address.entry_version_id,
+        },
+        "content": text,
+        "start": start,
+        "end": end,
+    }
+
+
+def _fragment_overhead(address: MemoryEntryAddress, text_length: int) -> int:
+    """Bytes one item adds besides its content, using the widest offsets the entry allows."""
+
+    return len(_json_text(_fragment_item(address, text_length, text_length, "")).encode("utf-8")) - len('""')
+
+
+def _render_fragments(fragments: Sequence[PreparedContextFragment]) -> str:
+    envelope = {
+        "trust": "untrusted_history",
+        "items": [
+            _fragment_item(fragment.address, fragment.start, fragment.end, fragment.text) for fragment in fragments
+        ],
+    }
+    return "\n\n".join((TRUST_POLICY, f"{_BEGIN_MARKER}\n{_json_text(envelope)}\n{_END_MARKER}"))
