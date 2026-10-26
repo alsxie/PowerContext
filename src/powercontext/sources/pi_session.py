@@ -1,0 +1,309 @@
+# Copyright (c) 2026 OceanBase.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# 作者：FDE WorkMate  # noqa: RUF003
+
+"""Pi v3 session branch history as immutable captured event Sources."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from os import PathLike
+from pathlib import Path
+from urllib.parse import quote
+
+from pydantic import BaseModel, ConfigDict, JsonValue
+
+from powercontext.limits import MAX_SOURCE_ID_LENGTH
+from powercontext.sources.connectors import ConnectorRunCompletion, ConnectorRunSession, ConnectorRunStatus
+from powercontext.sources.definitions import AdapterSourceDefinition
+from powercontext.sources.models import Source, SourceMaterialization
+from powercontext.sources.projections import TEXT_EVIDENCE_PROJECTION_KEY, TextEvidence
+
+PI_EVENT_SOURCE_NAME = "pi-event"
+PI_SESSION_CONNECTOR_NAME = "pi-session-history"
+_CHECKPOINT_SCHEMA = "powercontext.pi-session-history.v1"
+
+
+class PiSessionInput(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    content: bytes
+    leaf_id: str | None = None
+
+
+class PiEventInput(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    session_id: str
+    event_id: str
+    parent_id: str | None
+    event_type: str
+    role: str
+    content: str
+    record: dict[str, JsonValue]
+
+
+class PiEventSource(Source):
+    session_id: str
+    event_id: str
+    parent_id: str | None
+    event_type: str
+    role: str
+    content: str
+    record: dict[str, JsonValue]
+
+
+def pi_event_source_id(session_id: str, event_id: str) -> str:
+    direct = f"pi:{quote(session_id, safe='')}:{quote(event_id, safe='')}"
+    if len(direct) <= MAX_SOURCE_ID_LENGTH:
+        return direct
+    digest = hashlib.sha256(json.dumps([session_id, event_id], ensure_ascii=False).encode()).hexdigest()
+    return f"pi-h:{digest}"
+
+
+def _load(content: bytes) -> tuple[str, dict[str, dict[str, JsonValue]], list[str]]:  # noqa: C901
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError as error:
+        raise ValueError("Pi session must be UTF-8") from error  # noqa: TRY003
+    records = []
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as error:
+            raise ValueError("Pi session line is not JSON") from error  # noqa: TRY003
+        if not isinstance(record, dict):
+            raise ValueError("Pi session line must be a JSON object")  # noqa: TRY003, TRY004
+        records.append(record)
+    if not records:
+        raise ValueError("Pi session is empty")  # noqa: TRY003
+    header = records[0]
+    session_id = header.get("id")
+    if (
+        header.get("type") != "session"
+        or type(header.get("version")) is not int
+        or header["version"] != 3
+        or not isinstance(session_id, str)
+        or not session_id
+    ):
+        raise ValueError("Pi session header must be type=session version=3 with an id")  # noqa: TRY003
+    nodes: dict[str, dict[str, JsonValue]] = {}
+    order: list[str] = []
+    for record in records[1:]:
+        node_id, parent = record.get("id"), record.get("parentId")
+        if not isinstance(node_id, str) or not node_id or node_id in nodes:
+            raise ValueError("Pi entry ids must be unique non-empty strings")  # noqa: TRY003
+        if parent is not None and (not isinstance(parent, str) or parent not in nodes):
+            raise ValueError("Pi entry parent must reference an earlier entry")  # noqa: TRY003
+        nodes[node_id] = record
+        order.append(node_id)
+    return session_id, nodes, order
+
+
+def _text(content: object) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(
+            block["text"]
+            for block in content
+            if isinstance(block, dict) and block.get("type") == "text" and isinstance(block.get("text"), str)
+        )
+    return ""
+
+
+def _visible(record: dict[str, JsonValue]) -> tuple[str, str] | None:  # noqa: C901
+    kind = record.get("type")
+    if kind == "message":
+        message = record.get("message")
+        if not isinstance(message, dict) or not isinstance(message.get("role"), str):
+            return None
+        role = message["role"]
+        if role == "toolResult":
+            body = (
+                f"[tool_result {message.get('toolName')} {message.get('toolCallId')}] {_text(message.get('content'))}"
+            )
+        elif role == "bashExecution":
+            body = f"$ {message.get('command', '')}\n{message.get('output', '')}"
+        else:
+            content = message.get("content")
+            parts: list[str] = []
+            if isinstance(content, str):
+                parts.append(content)
+            elif isinstance(content, list):
+                for block in content:
+                    if not isinstance(block, dict):
+                        continue
+                    if block.get("type") == "text" and isinstance(block.get("text"), str):
+                        parts.append(block["text"])
+                    elif block.get("type") == "toolCall":
+                        arguments = json.dumps(
+                            block.get("arguments", {}), ensure_ascii=False, sort_keys=True, separators=(",", ":")
+                        )
+                        parts.append(f"[tool_call {block.get('name')} {block.get('id')}] {arguments}")
+            body = "\n".join(parts)
+    elif kind in {"compaction", "branch_summary"}:
+        role, body = kind, record.get("summary") if isinstance(record.get("summary"), str) else ""
+    elif kind == "custom_message":
+        role, body = "custom", _text(record.get("content"))
+    else:
+        return None
+    return (role, body) if body.strip() else None
+
+
+def _branch(nodes: dict[str, dict[str, JsonValue]], order: list[str], leaf_id: str | None) -> list[str]:
+    if leaf_id is None:
+        if not order:
+            return []
+        leaf_id = order[-1]
+    if leaf_id not in nodes:
+        raise ValueError("Pi leaf does not exist")  # noqa: TRY003
+    chain, seen, current = [], set(), leaf_id
+    while current is not None:
+        if current in seen:
+            raise ValueError("Pi entry graph contains a cycle")  # noqa: TRY003
+        seen.add(current)
+        chain.append(current)
+        current = nodes[current].get("parentId")  # type: ignore[assignment]
+    return chain[::-1]
+
+
+def _event(session_id: str, record: dict[str, JsonValue]) -> PiEventInput | None:
+    visible = _visible(record)
+    if visible is None:
+        return None
+    role, body = visible
+    return PiEventInput(
+        session_id=session_id,
+        event_id=record["id"],  # type: ignore[arg-type]
+        parent_id=record.get("parentId"),  # type: ignore[arg-type]
+        event_type=record["type"],  # type: ignore[arg-type]
+        role=role,
+        content=f"{role}: {body}",
+        record=record,
+    )
+
+
+def parse_pi_session(value: PiSessionInput) -> tuple[PiEventInput, ...]:
+    session_id, nodes, order = _load(value.content)
+    events = (_event(session_id, nodes[node_id]) for node_id in _branch(nodes, order, value.leaf_id))
+    return tuple(event for event in events if event is not None)
+
+
+class PiEventSourceAdapter:
+    input_class = PiEventInput
+    name = PI_EVENT_SOURCE_NAME
+    source_class = PiEventSource
+
+    async def resolve(self, value: PiEventInput, /) -> PiEventSource:
+        return PiEventSource(
+            name=pi_event_source_id(value.session_id, value.event_id),
+            materialization=SourceMaterialization.CAPTURED,
+            **value.model_dump(),
+        )
+
+    async def read(self, source: PiEventSource, /) -> PiEventInput:
+        return PiEventInput.model_validate(source.model_dump(include=set(PiEventInput.model_fields)))
+
+
+class PiEventTextEvidenceProjection:
+    name = TEXT_EVIDENCE_PROJECTION_KEY.name
+    version = TEXT_EVIDENCE_PROJECTION_KEY.version
+    source_class = PiEventSource
+    output_class: type[BaseModel] = TextEvidence
+
+    def project(self, source: PiEventSource, /) -> TextEvidence:
+        return TextEvidence(
+            source_type=PI_EVENT_SOURCE_NAME,
+            source_id=source.name,
+            content=source.content,
+            metadata={
+                "session_id": source.session_id,
+                "event_id": source.event_id,
+                "parent_id": source.parent_id,
+                "event_type": source.event_type,
+                "role": source.role,
+            },
+        )
+
+
+PI_EVENT_SOURCE_DEFINITION = AdapterSourceDefinition(
+    PiEventSourceAdapter(), version="1", projections=(PiEventTextEvidenceProjection(),)
+)
+
+
+def _digest(record: dict[str, JsonValue]) -> str:
+    encoded = json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+
+def _imported(checkpoint: JsonValue | None) -> dict[str, str]:
+    if checkpoint is None:
+        return {}
+    if (
+        not isinstance(checkpoint, dict)
+        or checkpoint.get("schema") != _CHECKPOINT_SCHEMA
+        or not isinstance(checkpoint.get("imported"), dict)
+        or not all(isinstance(value, str) for value in checkpoint["imported"].values())
+    ):
+        raise ValueError("unrecognized Pi session checkpoint")  # noqa: TRY003
+    return dict(checkpoint["imported"])  # type: ignore[arg-type]
+
+
+class PiSessionConnector:
+    name = PI_SESSION_CONNECTOR_NAME
+    version = "1"
+    source_definitions = frozenset({PI_EVENT_SOURCE_NAME})
+
+    def __init__(self, path: str | PathLike[str], leaf_id: str | None = None) -> None:
+        self.path = Path(path)
+        self.leaf_id = leaf_id
+
+    async def run(self, session: ConnectorRunSession, /) -> ConnectorRunCompletion:
+        imported = _imported(session.checkpoint)
+        session_id, nodes, order = _load(self.path.read_bytes())
+        branch = _branch(nodes, order, self.leaf_id)
+        # Detect rewrites of any previously imported record before submitting anything.
+        for node_id in order:
+            identity = pi_event_source_id(session_id, node_id)
+            if identity in imported and imported[identity] != _digest(nodes[node_id]):
+                raise ValueError(f"imported Pi event {node_id!r} was rewritten")  # noqa: TRY003
+        pending = [
+            event
+            for event in (_event(session_id, nodes[node_id]) for node_id in branch)
+            if event is not None and pi_event_source_id(session_id, event.event_id) not in imported
+        ]
+        updated = dict(imported)
+        for event in pending:
+            identity = pi_event_source_id(session_id, event.event_id)
+            outcome = await session.submit(identity, PI_EVENT_SOURCE_NAME, event)
+            if outcome.source_ref is not None:
+                updated[identity] = _digest(event.record)
+        return ConnectorRunCompletion(
+            status=ConnectorRunStatus.COMPLETE,
+            checkpoint={"schema": _CHECKPOINT_SCHEMA, "imported": updated},
+        )
+
+
+__all__ = [
+    "PI_EVENT_SOURCE_DEFINITION",
+    "PiEventInput",
+    "PiEventSource",
+    "PiSessionConnector",
+    "PiSessionInput",
+    "parse_pi_session",
+    "pi_event_source_id",
+]
