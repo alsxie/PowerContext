@@ -16,11 +16,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from powercontext.builtin.persistence.cursors import SourceCursorRepository
-from powercontext.builtin.persistence.database import AsyncDatabase
+from powercontext.builtin.persistence.database import SELECTION_BATCH_SIZE, AsyncDatabase
 from powercontext.builtin.persistence.processing_intents import ArtifactProcessingIntentRepository
 from powercontext.builtin.persistence.supervision import ArtifactProcessingFence, ArtifactProcessingLeaseRepository
 from powercontext.builtin.persistence.tables import PROFILE_POLICIES_TABLE, SOURCE_JOURNAL_HEADS_TABLE
@@ -43,6 +45,32 @@ async def enabled_profile_scopes(connection: AsyncConnection, scope_ids: tuple[s
         .with_for_update()
     )
     return frozenset(rows)
+
+
+async def pending_source_counts(
+    connection: AsyncConnection, scope_ids: Sequence[str], binding_name: str
+) -> dict[str, int]:
+    """Count journal identities after each Scope's last successful cursor for one binding.
+
+    Positions are allocated once per persisted Source identity, so replayed
+    captures and trust upgrades of an existing Source never add to the count.
+    A missing cursor means processing starts from position zero.
+    """
+
+    ordered = tuple(dict.fromkeys(scope_ids))
+    if not ordered:
+        return {}
+    heads = SOURCE_JOURNAL_HEADS_TABLE
+    positions: dict[str, int] = {}
+    for start in range(0, len(ordered), SELECTION_BATCH_SIZE):
+        batch = ordered[start : start + SELECTION_BATCH_SIZE]
+        rows = await connection.execute(select(heads.c.scope_id, heads.c.position).where(heads.c.scope_id.in_(batch)))
+        positions.update((str(scope), int(position)) for scope, position in rows)
+    cursors = await SourceCursorRepository().load_many(connection, ordered, binding_name)
+    return {
+        scope: max(0, positions.get(scope, 0) - (0 if scope not in cursors else cursors[scope].cursor.sequence))
+        for scope in ordered
+    }
 
 
 class SourceProcessingPendingProvider:

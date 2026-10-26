@@ -488,6 +488,7 @@ class ScopedSourceApplication:
                             span.set_attributes({_MEMORY_CAPTURE_SOURCE_COUNT: 1})
             except BaseValueConflictError as error:
                 raise SourceConflictError("identity", error.identity) from None
+            self._runtime._notify_source_journal()
             return SourceReceipt(
                 source_ref=SourceRef(source_type=record.source_type, source_id=record.source_id),
                 sequence=record.position,
@@ -504,7 +505,9 @@ class ScopedSourceApplication:
                 )
                 if span is not None:
                     span.set_attributes({_MEMORY_CAPTURE_SOURCE_COUNT: 1})
-            return SourceReceipt(source_ref=context.sources.catalog.as_ref(source), sequence=sequence)
+            receipt = SourceReceipt(source_ref=context.sources.catalog.as_ref(source), sequence=sequence)
+        self._runtime._notify_source_journal()
+        return receipt
 
 
 class SourceApplication:
@@ -531,11 +534,13 @@ class ScopedRecordApplication:
         /,
     ) -> SourceRecord:
         async with self._runtime._scope_operation(self.scope_id), self._runtime._locked(self.scope_id):
-            return await self._runtime._records().create_source(
+            record = await self._runtime._records().create_source(
                 self.scope_id,
                 source_type,
                 content,
             )
+        self._runtime._notify_source_journal()
+        return record
 
     async def get_source(self, source_type: str, source_id: str, /) -> SourceRecord:
         async with self._runtime._scope_operation(self.scope_id):
@@ -563,7 +568,10 @@ class ScopedRecordApplication:
         /,
     ) -> ArtifactCreated:
         async with self._runtime._scope_operation(self.scope_id), self._runtime._locked(self.scope_id):
-            return await self._runtime._records().create_artifact(self.scope_id, family, write)
+            created = await self._runtime._records().create_artifact(self.scope_id, family, write)
+        # Artifact writes may append lineage-only Sources to the journal.
+        self._runtime._notify_source_journal()
+        return created
 
     async def get_artifact(self, family: str, artifact_id: str, /) -> ArtifactRecord:
         async with self._runtime._scope_operation(self.scope_id):
@@ -646,13 +654,15 @@ class ScopedRecordApplication:
         /,
     ) -> ArtifactRecord:
         async with self._runtime._scope_operation(self.scope_id), self._runtime._locked(self.scope_id):
-            return await self._runtime._records().replace_artifact(
+            replaced = await self._runtime._records().replace_artifact(
                 self.scope_id,
                 family,
                 artifact_id,
                 expected_etag,
                 write,
             )
+        self._runtime._notify_source_journal()
+        return replaced
 
 
 class RecordApplication:
@@ -723,7 +733,9 @@ class RemoteIngestionApplication:
 
     async def submit(self, request: SubmitSourceObservation, /) -> SourceReceipt:
         async with self._runtime._scope_operation(request.scope_id):
-            return await self._require_service().submit_source_observation(request)
+            receipt = await self._require_service().submit_source_observation(request)
+        self._runtime._notify_source_journal()
+        return receipt
 
     async def commit(self, request: CommitConnectorCheckpoint, /) -> ConnectorCheckpointState:
         async with self._runtime._scope_operation(request.binding.scope_id):
@@ -3132,6 +3144,27 @@ class BuiltinRuntime:
     async def capabilities(self) -> RuntimeCapabilities:
         async with self._operation():
             return self._capabilities
+
+    def _notify_source_journal(self) -> None:
+        """Let count-triggered processing re-evaluate after a journal write.
+
+        Notification is only a latency hint: admission recomputes pending counts
+        from durable journal heads and cursors, and the Supervisor also polls.
+        """
+
+        supervisor = self.artifact_processing_supervisor
+        if supervisor is None:
+            return
+        try:
+            supervisor.notify_sources()
+        except Exception as error:
+            log_safely(
+                logger,
+                logging.WARNING,
+                "Artifact processing notification failed after a Source write",
+                exc_info=error,
+                extra={"event": "artifact_processing.source_notify_failed", "outcome": "committed"},
+            )
 
     async def readiness(self) -> RuntimeReadiness:
         """Check whether the Runtime and its assembled dependencies can accept work."""
