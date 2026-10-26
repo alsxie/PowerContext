@@ -285,6 +285,21 @@ class ServerSettings(BaseSettings):
             raise ValueError("public URL must use HTTPS unless it points to loopback")  # noqa: TRY003
         return self
 
+    @field_validator("runtime", mode="before")
+    @classmethod
+    def parse_environment_count_thresholds(cls, value: object) -> object:
+        # RuntimeConfig keeps count thresholds strict for Python callers;
+        # environment and dotenv values are always text, so accept only plain
+        # ASCII decimal digits here and leave every other value to validation.
+        if not isinstance(value, Mapping):
+            return value
+        normalized = dict(value)
+        for name in ("memory_source_count_threshold", "topic_memory_source_count_threshold"):
+            raw = normalized.get(name)
+            if isinstance(raw, str) and raw.isascii() and raw.isdecimal():
+                normalized[name] = int(raw)
+        return normalized
+
     @field_validator("database", mode="before")
     @classmethod
     def default_seekdb_database_path(cls, value: object) -> object:
