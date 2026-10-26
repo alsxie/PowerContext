@@ -261,8 +261,9 @@ so the previous database remains available for recovery:
    Because `pc_scopes.parent_scope_id` is self-referential, keep ancestor Scope rows before their descendants in the
    exported `pc_scopes` data.
    If the source predates the three Skill lifecycle tables (`pc_skill_packages`, `pc_agent_skill_targets`, and
-   `pc_skill_publications`), the Profile tables, `pc_topic_memory_work_budgets`, or
-   `pc_receipt_migration_review`, remove the absent tables from their respective layers.
+   `pc_skill_publications`), the Profile tables, `pc_topic_memory_work_budgets`,
+   `pc_receipt_migration_review`, or the Source lifecycle tables (`pc_source_lifecycle_nodes` and
+   `pc_source_lifecycle_events`), remove the absent tables from their respective layers.
    When a work-budget table exists, restore it together with Cursors so failure allowances survive the migration.
 
    Layer 1 contains parents and tables without foreign keys:
@@ -277,7 +278,7 @@ so the previous database remains available for recovery:
 
    ```bash
    obloader <connection-options> -D <new-database> --csv \
-     --table 'pc_dream_runs,pc_scope_context_references,pc_scope_external_references,pc_scope_creation_requests,pc_scope_settings,pc_scope_bindings,pc_artifact_heads,pc_artifact_lineage_sources,pc_artifact_lineage_artifacts,pc_artifact_publications,pc_artifact_candidate_versions,pc_topic_memory_revision_publications,pc_memory_entry_versions' \
+     --table 'pc_dream_runs,pc_scope_context_references,pc_scope_external_references,pc_scope_creation_requests,pc_scope_settings,pc_scope_bindings,pc_artifact_heads,pc_artifact_lineage_sources,pc_artifact_lineage_artifacts,pc_artifact_publications,pc_artifact_candidate_versions,pc_topic_memory_revision_publications,pc_memory_entry_versions,pc_source_lifecycle_nodes' \
      -f <export-directory>
    ```
 
@@ -285,7 +286,7 @@ so the previous database remains available for recovery:
 
    ```bash
    obloader <connection-options> -D <new-database> --csv \
-      --table 'pc_artifact_candidate_heads,pc_topic_memory_active_topics,pc_topic_memory_active_chunks,pc_memory_entry_heads,pc_artifact_tags,pc_recurrence_match,pc_recurrence_observation' \
+      --table 'pc_artifact_candidate_heads,pc_topic_memory_active_topics,pc_topic_memory_active_chunks,pc_memory_entry_heads,pc_artifact_tags,pc_recurrence_match,pc_recurrence_observation,pc_source_lifecycle_events' \
      -f <export-directory>
    ```
 

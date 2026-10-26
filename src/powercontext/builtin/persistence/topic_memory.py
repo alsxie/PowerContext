@@ -40,6 +40,7 @@ from powercontext.builtin.artifacts.topic_memory import (
     TopicMemoryDraft,
     TopicMemoryProjection,
     TopicMemoryProjectionError,
+    TopicMemorySearchChannels,
     TopicMemorySearchMode,
     TopicMemorySearchRequest,
     TopicMemorySearchResult,
@@ -50,6 +51,7 @@ from powercontext.builtin.artifacts.topic_memory import (
 from powercontext.builtin.artifacts.topic_memory.fusion import _fuse_topic_memory_rankings
 from powercontext.builtin.persistence.artifacts import ArtifactRepository
 from powercontext.builtin.persistence.errors import InvalidRepositoryArgumentError
+from powercontext.builtin.persistence.source_lifecycle import suppressed_topic_artifact_ids
 from powercontext.builtin.persistence.supervision import database_utc_now
 from powercontext.builtin.persistence.tables import (
     ARTIFACT_HEADS_TABLE,
@@ -488,6 +490,7 @@ class TopicMemoryRepository:
         )
         channels = await self.index.search(connection, scope_id, request)
         await self._check_retrieval_shape(connection)
+        channels = await _without_suppressed_topics(connection, scope_id, channels)
         outcome = _fuse_topic_memory_rankings(query, channels, limit, mode=used_mode, admission=admission)
         return TopicMemorySearchResult(
             mode=used_mode,
@@ -782,3 +785,21 @@ def _stored_utc(value: datetime) -> datetime:
 
 
 __all__ = ["TopicMemoryRepository"]
+
+
+async def _without_suppressed_topics(
+    connection: AsyncConnection,
+    scope_id: str,
+    channels: TopicMemorySearchChannels,
+) -> TopicMemorySearchChannels:
+    """Drop Topics whose Source lifecycle support is withdrawn before fusion and limits."""
+
+    suppressed = await suppressed_topic_artifact_ids(connection, scope_id)
+    if not suppressed:
+        return channels
+    return channels.model_copy(
+        update={
+            name: tuple(hit for hit in getattr(channels, name) if hit.artifact_ref.artifact_id not in suppressed)
+            for name in ("topic_fts", "topic_vector", "detail_fts", "detail_vector")
+        }
+    )
