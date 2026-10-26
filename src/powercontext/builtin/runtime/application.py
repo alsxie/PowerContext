@@ -167,6 +167,12 @@ from powercontext.builtin.runtime._scope_cache import (
     ScopeCacheObserver,
     ScopeEvictor,
 )
+from powercontext.builtin.runtime.context_pack import (
+    ContextPack,
+    ContextPackDelta,
+    ContextPackError,
+    aligned_context_pack,
+)
 from powercontext.builtin.runtime.decision_model import DecisionModel
 from powercontext.builtin.runtime.errors import InvalidRuntimeRequestError, TopicMemoryProcessingUnavailableError
 from powercontext.builtin.runtime.models import (
@@ -860,6 +866,30 @@ class ScopedContextApplication:
             if authorize_scopes is not None:
                 await authorize_scopes((self.scope_id, *scope.context_references))
             return await self._prepare(request, scope)
+
+    async def prepare_incremental(
+        self,
+        request: PrepareContextRequest,
+        /,
+        base_pack: ContextPack | None = None,
+        *,
+        authorize_scopes: Callable[[tuple[str, ...]], Awaitable[None]] | None = None,
+    ) -> ContextPack | ContextPackDelta:
+        """Prepare context as a full Context Pack, or as a delta against ``base_pack``.
+
+        The target text is exactly the ordinary ``prepare`` content (``None`` maps to an
+        empty pack). With a base, the target is chunked to reuse the longest run of leading
+        base chunks, so only the changed suffix is transmitted.
+        """
+        if base_pack is not None:
+            if not isinstance(base_pack, ContextPack):
+                raise ContextPackError("base_pack must be a ContextPack")  # noqa: TRY003
+            base_pack.verify()
+        prepared = await self.prepare(request, authorize_scopes=authorize_scopes)
+        content = prepared.content or ""
+        if base_pack is None:
+            return ContextPack.from_content(content)
+        return ContextPackDelta.between(base_pack, aligned_context_pack(base_pack, content))
 
     async def _prepare(self, request: PrepareContextRequest, scope: ScopeDescriptor, /) -> PreparedContext:
         build, effort = await self._prepare_build(request, scope)
