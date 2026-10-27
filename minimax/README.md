@@ -47,7 +47,7 @@ uv sync --frozen
 | 4 修改前测试 | `sddctx baseline` | 目标功能测试 7/7 因缺少 `statuses` 参数失败，回归测试 9/9 通过 |
 | 5 上下文 | `sddctx context` + `sddctx check` | 生成上下文并核对来源与行号 |
 | 6 重启恢复 | `server stop/start` + `sddctx next` | 从 PowerContext 读回已完成步骤，下一步为 agent |
-| 7 继续执行 | `sddctx run` | MiniMax 修改代码（最多 2 次，失败日志回传），随后修改后测试 |
+| 7 继续执行 | `sddctx run` | MiniMax 修改代码（最多 3 次，输出格式错误或测试失败时把原因回传重试），随后修改后测试 |
 | 8 规格更新 | `sddctx overlay` + `ingest` + `context` + `check` | 只更新变化条目，上下文使用新版规格并提示原验证需重做 |
 | 9 重新验证 | `sddctx verify` | 规格更新后重新运行测试 |
 
@@ -64,6 +64,13 @@ uv sync --frozen
 
 `sddctx check` 会逐条打开来源文件，确认上下文中每段内容与文件的对应行一致。
 
+## 已提交的真实运行：`records/runs/task-001-minimax/`
+
+- 接口 `https://api.minimax.cn/anthropic/v1/messages`，模型 `MiniMax-M3.1-Flash`，`effort=high`。
+- 第 1、2 次输出把路径写成 `<file path="orders/service.py>`（缺右引号），被判为格式错误并回传原因；第 3 次格式正确，修改 `orders/service.py` 后功能 7/7、回归 9/9 通过。三次输出 token 分别为 1950、1364、1749。
+- 修改后测试全量 16/16 通过；规格更新后重新导入、上下文核对、重新验证均通过；PowerContext 最终 handoff 版本 8，五个步骤全部完成。
+- `./run_demo.sh --replay records/runs/task-001-minimax/minimax` 重放这三次输出，得到的 `code.diff` 与原记录一致。
+
 ## 记录说明（`records/runs/<运行名>/`）
 
 | 文件 | 内容 |
@@ -72,7 +79,7 @@ uv sync --frozen
 | `context-check.json` | 上下文核对结果 |
 | `db_queries.jsonl` | 每次 seekdb 查询：用途、SQL、参数、行数、命中条目、耗时 |
 | `powercontext_log.jsonl` / `powercontext_state.json` | PowerContext 写入/读取操作与最终状态（scope、handoff 版本、已完成/待办、验证结果） |
-| `minimax/attempt-N.*` | 每次 MiniMax 调用的请求、响应（接口、模型、用量、耗时；只保存 text 内容块，不保存 thinking）与该次 diff |
+| `minimax/attempt-N.*` | 每次 MiniMax 调用的请求、响应（接口、模型、用量、耗时；只保存 text 内容块，不保存 thinking）、解析结果 `outcome.json` 与该次 diff |
 | `snapshots/before`、`snapshots/after`、`code.diff` | 修改前后代码快照与完整差异 |
 | `baseline-*`、`agent-attempt-*`、`verify-*` | 测试命令、退出码、junit XML、日志与汇总 |
 

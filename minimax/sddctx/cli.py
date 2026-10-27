@@ -189,14 +189,21 @@ def cmd_agent(settings: Settings, task: Task, args: argparse.Namespace) -> bool:
             messages = agent_module.build_messages(context_md, current, feedback)
             reply = agent_module.call_minimax(settings, messages)
             mode = "live"
-        files = agent_module.parse_files(reply["content"], editable)
+        agent_module.record_attempt(settings.records_dir, attempt, mode=mode, messages=messages, reply=reply)
+        try:
+            files = agent_module.parse_files(reply["content"], editable)
+        except agent_module.AgentError as error:
+            agent_module.record_outcome(settings.records_dir, attempt, diff="", files=[], error=str(error))
+            result = {"attempt": attempt, "mode": mode, "model": reply.get("model"), "files": [], "tests_passed": False, "error": str(error)}
+            feedback = f"上一次输出无法使用：{error}。请严格按规则输出 <file path=\"...\"> 完整文件内容 </file>。"
+            continue
         diff = agent_module.apply_files(settings.project_root, files)
         changed |= set(files)
-        agent_module.record_attempt(settings.records_dir, attempt, mode=mode, messages=messages, reply=reply, diff=diff, files=files)
+        agent_module.record_outcome(settings.records_dir, attempt, diff=diff, files=sorted(files), error=None)
         functional = run_tests(settings, f"agent-attempt-{attempt}-functional", plan["functional"], run_dir=settings.records_dir)
         regression = run_tests(settings, f"agent-attempt-{attempt}-regression", plan["regression"], run_dir=settings.records_dir)
         passed = functional["passed"] == functional["total"] > 0 and regression["passed"] == regression["total"] > 0
-        result = {"attempt": attempt, "mode": mode, "model": reply.get("model"), "files": sorted(files), "tests_passed": passed}
+        result = {"attempt": attempt, "mode": mode, "model": reply.get("model"), "files": sorted(changed), "tests_passed": passed}
         if passed:
             break
         feedback = (settings.records_dir / f"agent-attempt-{attempt}-functional.log").read_text(encoding="utf-8")[-4000:]
@@ -208,7 +215,9 @@ def cmd_agent(settings: Settings, task: Task, args: argparse.Namespace) -> bool:
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(settings.project_root / rel, destination)
     full_diff = "".join(
-        (settings.records_dir / "minimax" / f"attempt-{n}.diff").read_text(encoding="utf-8") for n in attempts if n <= result.get("attempt", 0)
+        (settings.records_dir / "minimax" / f"attempt-{n}.diff").read_text(encoding="utf-8")
+        for n in attempts
+        if n <= result.get("attempt", 0) and (settings.records_dir / "minimax" / f"attempt-{n}.diff").is_file()
     )
     (settings.records_dir / "code.diff").write_text(_combined_diff(snapshot_before, snapshot_after), encoding="utf-8")
     text = f"MiniMax（{result.get('mode')}，{result.get('model')}）第 {result.get('attempt')} 次修改 {', '.join(result.get('files', []))}"
@@ -219,9 +228,10 @@ def cmd_agent(settings: Settings, task: Task, args: argparse.Namespace) -> bool:
         "attempt_diff_bytes": len(full_diff),
         "code_version": code_version(settings.repo_root, settings.project_root),
     }
-    receipt = store.record_step(task, "agent", ok=bool(result.get("files")), summary=text, evidence=evidence)
+    ok = bool(result.get("tests_passed"))
+    receipt = store.record_step(task, "agent", ok=ok, summary=text, evidence=evidence)
     _print({"agent": result, "powercontext": receipt})
-    return bool(result.get("files"))
+    return ok
 
 
 def _combined_diff(before: Path, after: Path) -> str:
@@ -375,7 +385,7 @@ def main(argv: list[str] | None = None) -> int:
             command.add_argument("--no-record", dest="record", action="store_false", help="只输出，不写入 PowerContext")
         if name in ("agent", "run"):
             command.add_argument("--replay", help="重放已记录的 MiniMax 输出目录（records/runs/<run>/minimax）")
-            command.add_argument("--max-attempts", type=int, default=2)
+            command.add_argument("--max-attempts", type=int, default=3)
         if name == "run":
             command.add_argument("--format", default="md")
             command.add_argument("--record", default=True)

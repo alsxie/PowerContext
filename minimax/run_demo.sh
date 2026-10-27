@@ -41,7 +41,7 @@ step "6. 重启 PowerContext Server，模拟中断；重启后读取已保存的
 "${SDDCTX[@]}" next --task "$TASK"
 
 step "7. 从保存的状态继续：MiniMax 修改代码，然后运行修改后测试"
-"${SDDCTX[@]}" run --task "$TASK" "${AGENT_ARGS[@]}"
+"${SDDCTX[@]}" run --task "$TASK" ${AGENT_ARGS[@]+"${AGENT_ARGS[@]}"}
 
 step "8. 规格更新：叠加新版 specs/orders.md，增量重新导入，再生成上下文"
 "${SDDCTX[@]}" overlay --task "$TASK" samples/task-001/spec-update

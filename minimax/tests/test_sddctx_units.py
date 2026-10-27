@@ -84,3 +84,8 @@ def test_anthropic_reply_keeps_only_text_blocks():
     assert reply["content"] == "结果" and reply["content_block_types"] == ["thinking", "text"]
     merged = _merge_user_turns([{"role": "system", "content": "s"}, {"role": "user", "content": "a"}, {"role": "user", "content": "b"}])
     assert merged == [{"role": "user", "content": "a\n\nb"}]
+
+
+def test_parse_files_tolerates_fenced_body_and_single_quotes():
+    reply = "说明\n<file path='./orders/service.py'>\n```python\nx = 1\n```\n</file>"
+    assert parse_files(reply, {"orders/service.py"}) == {"orders/service.py": "x = 1\n"}

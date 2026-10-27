@@ -1,0 +1,356 @@
+{
+  "task": {
+    "id": "TASK-001",
+    "title": "订单列表按状态筛选",
+    "path": "/Users/wenzhifeng/Public/WorkMateSpace/sessions/01a17dee-5389-7e63-8e8d-0f033a8a27b3/repo/minimax/samples/task-001/task.md",
+    "change": "客服需要在订单列表里只看指定状态的订单。为 `OrderQueryService.list_orders` 增加可选关键字参数 `statuses`，\n按状态集合筛选订单，对空集合或未知状态抛出 `InvalidQueryError`（参数名 statuses），\n并保证筛选在排序和分页之前生效。",
+    "preserve": "- 不传 statuses 时，列表结果与修改前完全一致。\n- 排序规则不变：created_at 倒序，同一时间按 order_id 升序。\n- 分页参数校验与错误参数名不变；total 为筛选后、分页前的总数。\n- 客户消费总额 `total_amount_cents` 不受影响。"
+  },
+  "knowledge_base": {
+    "import_id": "d133337fb3e44aa699f9c6566bb93aac",
+    "imported_at": "2026-10-27T16:03:11+00:00",
+    "project_digest": "ef073f74c5a480cd",
+    "changes": "{\"added\": [\"code:_status_value\", \"code:_validate_statuses\"], \"updated\": [\"spec:REQ-ORD-004\", \"code:orders/service.py\", \"code:OrderQueryService\", \"code:OrderQueryService.list_orders\"], \"moved\": [\"code:OrderQueryService.total_amount_cents\", \"code:_listing_key\", \"code:_validate_pagination\"], \"removed\": [], \"unchanged\": 34}"
+  },
+  "specs": {
+    "applicable": [
+      {
+        "id": "REQ-ORD-004",
+        "title": "按状态筛选订单列表",
+        "status": "active",
+        "role": "primary",
+        "reason": "检索候选中得分最高、且不是其它候选“依据”的条目",
+        "source": "specs/orders.md:L30-L43",
+        "content_hash": "c9d08eb5c54e2144",
+        "body": "订单列表新增可选关键字参数 `statuses`，用于按订单状态筛选：\n\n1. 不传或传 `None` 时不筛选，行为与原有列表完全一致。\n2. 传入状态集合（list、tuple 或 set，元素为 `OrderStatus` 或其字符串值）时，只返回状态属于该集合的订单。\n3. 集合为空，或包含 REQ-ORD-003 之外的状态值时，抛出 `InvalidQueryError`，参数名为 `statuses`。\n4. 筛选在排序和分页之前进行：`total` 为筛选后的总数，排序继续遵守 REQ-ORD-001。\n5. 状态集合中重复出现的值只计一次，每条订单在结果中最多出现一次。\n6. 字符串状态值区分大小写，`\"PAID\"` 不是合法状态，按第 3 条处理。",
+        "score": 8.079,
+        "spec_refs": [
+          "ADR-002",
+          "REQ-ORD-001",
+          "REQ-ORD-003"
+        ]
+      },
+      {
+        "id": "ADR-002",
+        "title": "状态筛选接受状态集合并拒绝未知状态",
+        "status": "active",
+        "role": "constraint",
+        "reason": "主规格 REQ-ORD-004 的依据",
+        "source": "specs/decisions.md:L13-L20",
+        "content_hash": "9b01cd0c2876b498",
+        "body": "客服需要一次查看“已支付和已发货”的订单，因此筛选参数改为状态集合 `statuses`。\n未知状态静默返回空列表会掩盖调用方错误，改为抛出 `InvalidQueryError`。",
+        "score": 9.434,
+        "spec_refs": [
+          "ADR-001"
+        ],
+        "supersedes": "ADR-001"
+      },
+      {
+        "id": "REQ-BIL-001",
+        "title": "客户消费总额",
+        "status": "active",
+        "role": "constraint",
+        "reason": "任务“必须保持”段落全文检索命中",
+        "source": "specs/billing.md:L5-L10",
+        "content_hash": "08f66f8cc576080e",
+        "body": "客户消费总额为该客户全部订单 `amount_cents` 之和，单位为分，不做四舍五入。",
+        "score": 10.808
+      },
+      {
+        "id": "REQ-ORD-001",
+        "title": "订单列表排序",
+        "status": "active",
+        "role": "constraint",
+        "reason": "任务“必须保持”段落全文检索命中",
+        "source": "specs/orders.md:L7-L13",
+        "content_hash": "c4ac01a50a6cc141",
+        "body": "客户订单列表按 `created_at` 倒序返回；创建时间相同时按 `order_id` 升序排列，保证结果稳定。\n任何筛选条件都不得改变这一排序规则。",
+        "score": 6.521
+      },
+      {
+        "id": "REQ-ORD-002",
+        "title": "订单列表分页",
+        "status": "active",
+        "role": "constraint",
+        "reason": "全文检索得分 ≥ 最高分的 50%",
+        "source": "specs/orders.md:L15-L21",
+        "content_hash": "6afc6f419a3678a9",
+        "body": "`page` 从 1 开始，`page_size` 取值 1 到 100，超出范围时抛出 `InvalidQueryError`，错误信息必须指出出错的参数名。\n返回的 `total` 是分页前、所有筛选条件生效后的记录总数。",
+        "score": 4.782
+      },
+      {
+        "id": "REQ-ORD-003",
+        "title": "订单状态与金额",
+        "status": "active",
+        "role": "constraint",
+        "reason": "被规格 REQ-ORD-004 引用",
+        "source": "specs/orders.md:L23-L28",
+        "content_hash": "5b3bf4f603dfd180",
+        "body": "订单状态只允许 pending、paid、shipped、cancelled、refunded 五种取值。金额以整数分保存。"
+      }
+    ],
+    "superseded": [
+      {
+        "id": "ADR-001",
+        "title": "状态筛选只接受单个状态",
+        "status": "superseded",
+        "role": "superseded",
+        "reason": "检索命中但已被取代，不得遵循",
+        "source": "specs/decisions.md:L5-L11",
+        "content_hash": "2b5902a759e92161",
+        "body": "订单列表的状态筛选参数命名为 `status`，只接受单个状态字符串；传入未知状态时静默返回空列表。",
+        "score": 4.814,
+        "spec_refs": [
+          "ADR-002"
+        ],
+        "superseded_by": "ADR-002"
+      }
+    ]
+  },
+  "code": {
+    "files_to_modify": [
+      "orders/service.py"
+    ],
+    "edit_targets": [
+      {
+        "symbol": "OrderQueryService.list_orders",
+        "kind": "method",
+        "source": "orders/service.py:L19-L42",
+        "reason": "主规格 REQ-ORD-004 关联的可修改符号",
+        "content_hash": "da5e170ac828cc98",
+        "body": "    def list_orders(\n        self,\n        customer_id: str,\n        *,\n        page: int = 1,\n        page_size: int = 20,\n        statuses: list[OrderStatus | str] | tuple[OrderStatus | str, ...] | set[OrderStatus | str] | None = None,\n    ) -> Page:\n        \"\"\"列出客户订单：可按状态筛选，再按创建时间倒序、订单号升序排序并分页。\"\"\"\n\n        _validate_pagination(page, page_size)\n        status_values = _validate_statuses(statuses)\n\n        orders = self._repository.by_customer(customer_id)\n        if status_values is not None:\n            orders = [\n                order\n                for order in orders\n                if _status_value(order.status) in status_values\n            ]\n\n        ordered = sorted(orders, key=_listing_key)\n        start = (page - 1) * page_size\n        return Page(items=ordered[start : start + page_size], total=len(ordered), page=page, page_size=page_size)"
+      }
+    ],
+    "references": [
+      {
+        "symbol": "InvalidQueryError",
+        "kind": "class",
+        "source": "orders/errors.py:L5-L10",
+        "reason": "主规格 REQ-ORD-004 关联的类型/模块",
+        "content_hash": "21375a896c223193",
+        "body": "class InvalidQueryError(ValueError):\n    \"\"\"查询参数不合法时抛出，message 必须指出出错的参数（REQ-ORD-002）。\"\"\"\n\n    def __init__(self, parameter: str, message: str) -> None:\n        super().__init__(f\"{parameter}: {message}\")\n        self.parameter = parameter"
+      },
+      {
+        "symbol": "OrderStatus",
+        "kind": "class",
+        "source": "orders/models.py:L11-L18",
+        "reason": "主规格 REQ-ORD-004 关联的类型/模块",
+        "content_hash": "37ffcfdd107884f8",
+        "body": "class OrderStatus(str, Enum):\n    \"\"\"订单状态，取值见 specs/orders.md 的 REQ-ORD-003。\"\"\"\n\n    PENDING = \"pending\"\n    PAID = \"paid\"\n    SHIPPED = \"shipped\"\n    CANCELLED = \"cancelled\"\n    REFUNDED = \"refunded\""
+      },
+      {
+        "symbol": "Page",
+        "kind": "class",
+        "source": "orders/models.py:L32-L39",
+        "reason": "被待修改符号调用",
+        "content_hash": "1a9dcffc14672ebd",
+        "body": "@dataclass(frozen=True)\nclass Page:\n    \"\"\"分页查询结果；total 为分页前满足条件的记录总数。\"\"\"\n\n    items: list[Order] = field(default_factory=list)\n    total: int = 0\n    page: int = 1\n    page_size: int = 20"
+      },
+      {
+        "symbol": "_listing_key",
+        "kind": "function",
+        "source": "orders/service.py:L84-L85",
+        "reason": "被待修改符号调用",
+        "content_hash": "9c5d20aec6aadd97",
+        "body": "def _listing_key(order: Order) -> tuple[float, str]:\n    return (-order.created_at.timestamp(), order.order_id)"
+      },
+      {
+        "symbol": "_status_value",
+        "kind": "function",
+        "source": "orders/service.py:L50-L51",
+        "reason": "被待修改符号调用",
+        "content_hash": "47de866c10462367",
+        "body": "def _status_value(status: OrderStatus | str) -> str:\n    return status.value if isinstance(status, OrderStatus) else status"
+      },
+      {
+        "symbol": "_validate_pagination",
+        "kind": "function",
+        "source": "orders/service.py:L88-L92",
+        "reason": "被待修改符号调用",
+        "content_hash": "c636b00edcb67647",
+        "body": "def _validate_pagination(page: int, page_size: int) -> None:\n    if not isinstance(page, int) or isinstance(page, bool) or page < 1:\n        raise InvalidQueryError(\"page\", \"must be an integer >= 1\")\n    if not isinstance(page_size, int) or isinstance(page_size, bool) or not 1 <= page_size <= MAX_PAGE_SIZE:\n        raise InvalidQueryError(\"page_size\", f\"must be an integer between 1 and {MAX_PAGE_SIZE}\")"
+      },
+      {
+        "symbol": "_validate_statuses",
+        "kind": "function",
+        "source": "orders/service.py:L54-L81",
+        "reason": "被待修改符号调用",
+        "content_hash": "be839abe147e14dd",
+        "body": "def _validate_statuses(\n    statuses: list[OrderStatus | str] | tuple[OrderStatus | str, ...] | set[OrderStatus | str] | None,\n) -> set[str] | None:\n    if statuses is None:\n        return None\n\n    if not isinstance(statuses, (list, tuple, set, frozenset)):\n        raise InvalidQueryError(\"statuses\", \"must be a list, tuple, or set of valid order statuses\")\n\n    if not statuses:\n        raise InvalidQueryError(\"statuses\", \"must not be empty\")\n\n    valid_statuses = {status.value for status in OrderStatus}\n    normalized: set[str] = set()\n\n    for status in statuses:\n        if isinstance(status, OrderStatus):\n            value = status.value\n        elif isinstance(status, str):\n            value = status\n        else:\n            raise InvalidQueryError(\"statuses\", \"must contain only valid order statuses\")\n\n        if value not in valid_statuses:\n            raise InvalidQueryError(\"statuses\", \"must contain only valid order statuses\")\n        normalized.add(value)\n\n    return normalized"
+      }
+    ]
+  },
+  "tests": {
+    "functional": [
+      {
+        "id": "tests/test_status_filter.py::test_filter_accepts_string_values",
+        "source": "tests/test_status_filter.py:L25-L27",
+        "reason": "引用主规格 REQ-ORD-004",
+        "body": "def test_filter_accepts_string_values(service: OrderQueryService) -> None:\n    page = service.list_orders(\"c-001\", statuses=[\"refunded\", \"cancelled\"])\n    assert [order.order_id for order in page.items] == [\"o-006\", \"o-005\"]"
+      },
+      {
+        "id": "tests/test_status_filter.py::test_filter_applies_before_pagination",
+        "source": "tests/test_status_filter.py:L30-L33",
+        "reason": "引用主规格 REQ-ORD-004",
+        "body": "def test_filter_applies_before_pagination(service: OrderQueryService) -> None:\n    page = service.list_orders(\"c-001\", statuses=(\"paid\", \"shipped\", \"pending\"), page=2, page_size=3)\n    assert [order.order_id for order in page.items] == [\"o-001\"]\n    assert page.total == 4"
+      },
+      {
+        "id": "tests/test_status_filter.py::test_filter_by_status_set_keeps_sorting",
+        "source": "tests/test_status_filter.py:L19-L22",
+        "reason": "引用主规格 REQ-ORD-004",
+        "body": "def test_filter_by_status_set_keeps_sorting(service: OrderQueryService) -> None:\n    page = service.list_orders(\"c-001\", statuses={OrderStatus.PAID, OrderStatus.SHIPPED})\n    assert [order.order_id for order in page.items] == [\"o-004\", \"o-003\", \"o-002\"]\n    assert page.total == 3"
+      },
+      {
+        "id": "tests/test_status_filter.py::test_invalid_statuses_raise_with_parameter_name",
+        "source": "tests/test_status_filter.py:L40-L44",
+        "reason": "引用主规格 REQ-ORD-004",
+        "body": "@pytest.mark.parametrize(\"statuses\", [[], [\"paid\", \"lost\"], [\"PAID-X\"]])\ndef test_invalid_statuses_raise_with_parameter_name(service: OrderQueryService, statuses: list[str]) -> None:\n    with pytest.raises(InvalidQueryError) as error:\n        service.list_orders(\"c-001\", statuses=statuses)\n    assert error.value.parameter == \"statuses\""
+      },
+      {
+        "id": "tests/test_status_filter.py::test_none_statuses_keeps_original_listing",
+        "source": "tests/test_status_filter.py:L36-L37",
+        "reason": "引用主规格 REQ-ORD-004",
+        "body": "def test_none_statuses_keeps_original_listing(service: OrderQueryService) -> None:\n    assert service.list_orders(\"c-001\", statuses=None) == service.list_orders(\"c-001\")"
+      }
+    ],
+    "regression": [
+      {
+        "id": "tests/test_billing.py::test_total_amount_sums_all_orders",
+        "source": "tests/test_billing.py:L8-L11",
+        "reason": "引用约束规格 REQ-BIL-001",
+        "body": "def test_total_amount_sums_all_orders() -> None:\n    service = OrderQueryService(InMemoryOrderRepository(seed_orders()))\n    assert service.total_amount_cents(\"c-001\") == 21000\n    assert service.total_amount_cents(\"c-002\") == 4999"
+      },
+      {
+        "id": "tests/test_listing.py::test_invalid_pagination_names_parameter",
+        "source": "tests/test_listing.py:L57-L61",
+        "reason": "调用待修改符号 list_orders",
+        "body": "@pytest.mark.parametrize((\"page\", \"page_size\", \"parameter\"), [(0, 20, \"page\"), (1, 0, \"page_size\"), (1, 101, \"page_size\")])\ndef test_invalid_pagination_names_parameter(service: OrderQueryService, page: int, page_size: int, parameter: str) -> None:\n    with pytest.raises(InvalidQueryError) as error:\n        service.list_orders(\"c-001\", page=page, page_size=page_size)\n    assert error.value.parameter == parameter"
+      },
+      {
+        "id": "tests/test_listing.py::test_list_orders_breaks_ties_by_order_id",
+        "source": "tests/test_listing.py:L26-L35",
+        "reason": "调用待修改符号 list_orders",
+        "body": "def test_list_orders_breaks_ties_by_order_id() -> None:\n    same_time = datetime(2026, 2, 1)\n    repository = InMemoryOrderRepository(\n        [\n            Order(\"o-b\", \"c-9\", OrderStatus.PAID, 1, same_time),\n            Order(\"o-a\", \"c-9\", OrderStatus.PAID, 1, same_time),\n        ]\n    )\n    page = OrderQueryService(repository).list_orders(\"c-9\")\n    assert [order.order_id for order in page.items] == [\"o-a\", \"o-b\"]"
+      },
+      {
+        "id": "tests/test_listing.py::test_list_orders_only_returns_customer_orders",
+        "source": "tests/test_listing.py:L38-L41",
+        "reason": "调用待修改符号 list_orders",
+        "body": "def test_list_orders_only_returns_customer_orders(service: OrderQueryService) -> None:\n    page = service.list_orders(\"c-002\")\n    assert [order.order_id for order in page.items] == [\"o-101\"]\n    assert page.total == 1"
+      },
+      {
+        "id": "tests/test_listing.py::test_list_orders_sorted_by_created_at_desc",
+        "source": "tests/test_listing.py:L21-L23",
+        "reason": "调用待修改符号 list_orders",
+        "body": "def test_list_orders_sorted_by_created_at_desc(service: OrderQueryService) -> None:\n    page = service.list_orders(\"c-001\")\n    assert [order.order_id for order in page.items] == [\"o-006\", \"o-005\", \"o-004\", \"o-003\", \"o-002\", \"o-001\"]"
+      },
+      {
+        "id": "tests/test_listing.py::test_pagination_slices_after_sorting",
+        "source": "tests/test_listing.py:L44-L48",
+        "reason": "调用待修改符号 list_orders",
+        "body": "def test_pagination_slices_after_sorting(service: OrderQueryService) -> None:\n    page = service.list_orders(\"c-001\", page=2, page_size=4)\n    assert [order.order_id for order in page.items] == [\"o-002\", \"o-001\"]\n    assert page.total == 6\n    assert (page.page, page.page_size) == (2, 4)"
+      },
+      {
+        "id": "tests/test_listing.py::test_unknown_customer_returns_empty_page",
+        "source": "tests/test_listing.py:L51-L54",
+        "reason": "调用待修改符号 list_orders",
+        "body": "def test_unknown_customer_returns_empty_page(service: OrderQueryService) -> None:\n    page = service.list_orders(\"c-404\")\n    assert page.items == []\n    assert page.total == 0"
+      }
+    ],
+    "functional_files": [
+      "tests/test_status_filter.py"
+    ],
+    "regression_files": [
+      "tests/test_billing.py",
+      "tests/test_listing.py"
+    ]
+  },
+  "state": {
+    "source": "powercontext",
+    "scope_id": "scp_2qdjtjt166e4t6f60fdzynf232",
+    "task_id": "TASK-001",
+    "handoff_revision": 6,
+    "done": [
+      {
+        "step": "ingest",
+        "title": "导入规格、代码和测试到 seekdb",
+        "source_id": "src_6ddab75b824844e39b8f85ebc59b296f",
+        "at": "2026-10-27T16:03:11+00:00",
+        "summary": "导入 43 条（规格 8，代码 23，测试 12），内容变化 6 条，仅位置变化 3 条"
+      },
+      {
+        "step": "baseline",
+        "title": "修改前运行目标功能测试，确认因功能未实现而失败",
+        "source_id": "src_e14f744586b5441482aa989fdaef5b4e",
+        "at": "2026-10-27T16:02:11+00:00",
+        "summary": "目标功能测试 7/7 因功能未实现失败（exit 1），回归测试 9/9 通过（exit 0）",
+        "code_version": {
+          "git_dirty_paths": [],
+          "git_head": "e2a21b825f183becfd9cbc0df3ee5f512a968957",
+          "project_digest": "9766c504ac1362f6"
+        }
+      },
+      {
+        "step": "context",
+        "title": "从 seekdb 检索并生成开发上下文",
+        "source_id": "src_51862989622f4389b6179236eafe6401",
+        "at": "2026-10-27T16:02:14+00:00",
+        "summary": "主规格 REQ-ORD-004，适用规格 6 条，待修改符号 OrderQueryService.list_orders，功能测试函数 5 个，回归测试函数 7 个"
+      },
+      {
+        "step": "agent",
+        "title": "MiniMax 根据上下文完成代码修改",
+        "source_id": "src_541dfd393004457f898e77ca106e2802",
+        "at": "2026-10-27T16:03:06+00:00",
+        "summary": "MiniMax（live，MiniMax-M3.1-Flash）第 3 次修改 orders/service.py",
+        "code_version": {
+          "git_dirty_paths": [],
+          "git_head": "e2a21b825f183becfd9cbc0df3ee5f512a968957",
+          "project_digest": "8abb051f57298593"
+        }
+      },
+      {
+        "step": "verify",
+        "title": "修改后运行目标功能测试和回归测试，全部通过",
+        "source_id": "src_3912615012994f7aab3b5bfaf0504592",
+        "at": "2026-10-27T16:03:07+00:00",
+        "summary": "目标功能测试 7/7 通过，回归测试 9/9 通过，全量 16/16 通过（exit 0/0/0）",
+        "code_version": {
+          "git_dirty_paths": [],
+          "git_head": "e2a21b825f183becfd9cbc0df3ee5f512a968957",
+          "project_digest": "8abb051f57298593"
+        }
+      }
+    ],
+    "todo": [],
+    "next_step": null,
+    "handoff_next_action": "任务已完成，无后续动作",
+    "available": true,
+    "verifications": [
+      {
+        "step": "baseline",
+        "ok": true,
+        "summary": "目标功能测试 7/7 因功能未实现失败（exit 1），回归测试 9/9 通过（exit 0）",
+        "source_id": "src_e14f744586b5441482aa989fdaef5b4e",
+        "project_digest": "9766c504ac1362f6",
+        "still_applies": false
+      },
+      {
+        "step": "verify",
+        "ok": true,
+        "summary": "目标功能测试 7/7 通过，回归测试 9/9 通过，全量 16/16 通过（exit 0/0/0）",
+        "source_id": "src_3912615012994f7aab3b5bfaf0504592",
+        "project_digest": "8abb051f57298593",
+        "still_applies": false
+      }
+    ],
+    "spec_changes_since_last_context": [
+      {
+        "id": "REQ-ORD-004",
+        "previous_hash": "8be251206d0eb974",
+        "current_hash": "c9d08eb5c54e2144"
+      }
+    ],
+    "current_project_digest": "ef073f74c5a480cd"
+  }
+}

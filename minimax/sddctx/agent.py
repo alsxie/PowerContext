@@ -22,7 +22,8 @@ from sddctx.config import Settings
 from sddctx.parsers import ProjectLayout, collect_files
 from sddctx.records import now_iso, write_json
 
-FILE_BLOCK = re.compile(r'<file path="([^"]+)">\n(.*?)\n?</file>', re.DOTALL)
+FILE_BLOCK = re.compile(r"<file\s+path\s*=\s*[\"']([^\"']+)[\"']\s*>[ \t]*\n?(.*?)\n?[ \t]*</file>", re.DOTALL)
+FENCE = re.compile(r"\A\s*```[\w+-]*[ \t]*\n(.*?)\n?```\s*\Z", re.DOTALL)
 THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
 
 SYSTEM_PROMPT = """你是一名严谨的 Python 开发助手，按照规格驱动开发（SDD）完成代码修改。
@@ -148,7 +149,10 @@ def call_minimax(settings: Settings, messages: list[dict[str, str]]) -> dict[str
 
 
 def parse_files(content: str, editable: set[str]) -> dict[str, str]:
-    blocks = {path.strip(): body for path, body in FILE_BLOCK.findall(content)}
+    blocks = {}
+    for path, body in FILE_BLOCK.findall(content):
+        fenced = FENCE.match(body)  # 容忍模型在 <file> 段内再包一层 Markdown 代码块
+        blocks[path.strip().removeprefix("./")] = fenced.group(1) if fenced else body
     if not blocks:
         raise AgentError("模型输出中没有 <file> 段")
     rejected = sorted(path for path in blocks if path not in editable)
@@ -170,12 +174,19 @@ def apply_files(project_root: Path, files: dict[str, str]) -> str:
     return "".join(chunks)
 
 
-def record_attempt(run_dir: Path, attempt: int, *, mode: str, messages, reply: dict[str, Any], diff: str, files: dict[str, str]) -> Path:  # noqa: ANN001
+def record_attempt(run_dir: Path, attempt: int, *, mode: str, messages, reply: dict[str, Any]) -> Path:  # noqa: ANN001
+    """解析前先落盘请求与原始回复，解析失败时也能看到模型输出。"""
+
     base = run_dir / "minimax"
     write_json(base / f"attempt-{attempt}.request.json", {"at": now_iso(), "mode": mode, "messages": messages})
-    write_json(base / f"attempt-{attempt}.response.json", {"at": now_iso(), "mode": mode, **reply, "files_changed": sorted(files)})
-    (base / f"attempt-{attempt}.diff").write_text(diff, encoding="utf-8")
+    write_json(base / f"attempt-{attempt}.response.json", {"at": now_iso(), "mode": mode, **reply})
     return base
+
+
+def record_outcome(run_dir: Path, attempt: int, *, diff: str, files: list[str], error: str | None) -> None:
+    base = run_dir / "minimax"
+    (base / f"attempt-{attempt}.diff").write_text(diff, encoding="utf-8")
+    write_json(base / f"attempt-{attempt}.outcome.json", {"at": now_iso(), "files_changed": files, "parse_error": error})
 
 
 def load_replay(replay_dir: Path, attempt: int) -> tuple[list[dict[str, str]], dict[str, Any]]:

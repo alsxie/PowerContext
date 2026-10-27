@@ -1,0 +1,116 @@
+{
+  "label": "verify-full-suite",
+  "at": "2026-10-27T16:03:15+00:00",
+  "cwd": "minimax/.work/sample_app",
+  "command": "python -m pytest -q --junitxml=verify-full-suite.junit.xml",
+  "exit_code": 0,
+  "duration_s": 0.15,
+  "code_version": {
+    "git_head": "e2a21b825f183becfd9cbc0df3ee5f512a968957",
+    "git_dirty_paths": [],
+    "project_digest": "ef073f74c5a480cd"
+  },
+  "total": 16,
+  "passed": 16,
+  "failed": 0,
+  "errors": 0,
+  "environment_errors": [],
+  "cases": [
+    {
+      "id": "tests/test_billing.py::test_total_amount_sums_all_orders",
+      "outcome": "passed",
+      "message": "",
+      "environment_error": false
+    },
+    {
+      "id": "tests/test_listing.py::test_list_orders_sorted_by_created_at_desc",
+      "outcome": "passed",
+      "message": "",
+      "environment_error": false
+    },
+    {
+      "id": "tests/test_listing.py::test_list_orders_breaks_ties_by_order_id",
+      "outcome": "passed",
+      "message": "",
+      "environment_error": false
+    },
+    {
+      "id": "tests/test_listing.py::test_list_orders_only_returns_customer_orders",
+      "outcome": "passed",
+      "message": "",
+      "environment_error": false
+    },
+    {
+      "id": "tests/test_listing.py::test_pagination_slices_after_sorting",
+      "outcome": "passed",
+      "message": "",
+      "environment_error": false
+    },
+    {
+      "id": "tests/test_listing.py::test_unknown_customer_returns_empty_page",
+      "outcome": "passed",
+      "message": "",
+      "environment_error": false
+    },
+    {
+      "id": "tests/test_listing.py::test_invalid_pagination_names_parameter[0-20-page]",
+      "outcome": "passed",
+      "message": "",
+      "environment_error": false
+    },
+    {
+      "id": "tests/test_listing.py::test_invalid_pagination_names_parameter[1-0-page_size]",
+      "outcome": "passed",
+      "message": "",
+      "environment_error": false
+    },
+    {
+      "id": "tests/test_listing.py::test_invalid_pagination_names_parameter[1-101-page_size]",
+      "outcome": "passed",
+      "message": "",
+      "environment_error": false
+    },
+    {
+      "id": "tests/test_status_filter.py::test_filter_by_status_set_keeps_sorting",
+      "outcome": "passed",
+      "message": "",
+      "environment_error": false
+    },
+    {
+      "id": "tests/test_status_filter.py::test_filter_accepts_string_values",
+      "outcome": "passed",
+      "message": "",
+      "environment_error": false
+    },
+    {
+      "id": "tests/test_status_filter.py::test_filter_applies_before_pagination",
+      "outcome": "passed",
+      "message": "",
+      "environment_error": false
+    },
+    {
+      "id": "tests/test_status_filter.py::test_none_statuses_keeps_original_listing",
+      "outcome": "passed",
+      "message": "",
+      "environment_error": false
+    },
+    {
+      "id": "tests/test_status_filter.py::test_invalid_statuses_raise_with_parameter_name[statuses0]",
+      "outcome": "passed",
+      "message": "",
+      "environment_error": false
+    },
+    {
+      "id": "tests/test_status_filter.py::test_invalid_statuses_raise_with_parameter_name[statuses1]",
+      "outcome": "passed",
+      "message": "",
+      "environment_error": false
+    },
+    {
+      "id": "tests/test_status_filter.py::test_invalid_statuses_raise_with_parameter_name[statuses2]",
+      "outcome": "passed",
+      "message": "",
+      "environment_error": false
+    }
+  ]
+}

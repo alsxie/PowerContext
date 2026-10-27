@@ -1,0 +1,62 @@
+{
+  "label": "baseline-functional",
+  "at": "2026-10-27T16:02:11+00:00",
+  "cwd": "minimax/.work/sample_app",
+  "command": "python -m pytest -q --junitxml=baseline-functional.junit.xml tests/test_status_filter.py",
+  "exit_code": 1,
+  "duration_s": 0.19,
+  "code_version": {
+    "git_head": "e2a21b825f183becfd9cbc0df3ee5f512a968957",
+    "git_dirty_paths": [],
+    "project_digest": "9766c504ac1362f6"
+  },
+  "total": 7,
+  "passed": 0,
+  "failed": 7,
+  "errors": 0,
+  "environment_errors": [],
+  "cases": [
+    {
+      "id": "tests/test_status_filter.py::test_filter_by_status_set_keeps_sorting",
+      "outcome": "failed",
+      "message": "TypeError: OrderQueryService.list_orders() got an unexpected keyword argument 'statuses'",
+      "environment_error": false
+    },
+    {
+      "id": "tests/test_status_filter.py::test_filter_accepts_string_values",
+      "outcome": "failed",
+      "message": "TypeError: OrderQueryService.list_orders() got an unexpected keyword argument 'statuses'",
+      "environment_error": false
+    },
+    {
+      "id": "tests/test_status_filter.py::test_filter_applies_before_pagination",
+      "outcome": "failed",
+      "message": "TypeError: OrderQueryService.list_orders() got an unexpected keyword argument 'statuses'",
+      "environment_error": false
+    },
+    {
+      "id": "tests/test_status_filter.py::test_none_statuses_keeps_original_listing",
+      "outcome": "failed",
+      "message": "TypeError: OrderQueryService.list_orders() got an unexpected keyword argument 'statuses'",
+      "environment_error": false
+    },
+    {
+      "id": "tests/test_status_filter.py::test_invalid_statuses_raise_with_parameter_name[statuses0]",
+      "outcome": "failed",
+      "message": "TypeError: OrderQueryService.list_orders() got an unexpected keyword argument 'statuses'",
+      "environment_error": false
+    },
+    {
+      "id": "tests/test_status_filter.py::test_invalid_statuses_raise_with_parameter_name[statuses1]",
+      "outcome": "failed",
+      "message": "TypeError: OrderQueryService.list_orders() got an unexpected keyword argument 'statuses'",
+      "environment_error": false
+    },
+    {
+      "id": "tests/test_status_filter.py::test_invalid_statuses_raise_with_parameter_name[statuses2]",
+      "outcome": "failed",
+      "message": "TypeError: OrderQueryService.list_orders() got an unexpected keyword argument 'statuses'",
+      "environment_error": false
+    }
+  ]
+}
