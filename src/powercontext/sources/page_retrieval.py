@@ -20,6 +20,13 @@ Every page text starts with its document identifier on the first line. Ranking
 combines three generic signals: which document the question names, BM25 over
 stemmed unigrams and bigrams with financial-vocabulary query expansion, and the
 kind of primary financial statement a question relies on.
+
+Vocabulary principle: every word list and pattern in this module is general
+financial-report vocabulary (statement titles, line items, ratio names and the
+wording annual and quarterly reports use for them) or generic question-template
+wording (such as "answer", "decimal", "usd" or "millions") that describes the
+requested answer format rather than its content. No list names a specific
+question, company, document or expected answer.
 """
 
 from __future__ import annotations
@@ -39,6 +46,8 @@ _B = 0.75
 _BIGRAM_WEIGHT = 0.6
 _PRIOR_WEIGHT = 0.05
 
+# Function words plus question-template wording about answer format, units and
+# rounding; neither identifies the content a page must contain.
 _STOPWORDS = frozenset([
     "a",
     "about",
@@ -237,7 +246,6 @@ _STOPWORDS = frozenset([
     "agreement",
     "items",
     "item",
-    "shown",
     "amount",
     "quantity",
     "relevant",
@@ -313,20 +321,31 @@ _STATEMENTS: dict[str, re.Pattern[str]] = {
     "balance": re.compile(r"balance sheets?|statements? of (consolidated )?financial (position|condition)"),
 }
 
-_QUESTION_STATEMENTS: tuple[tuple[str, str], ...] = (
-    (r"income statement|statement of income|statement of operations|p ?& ?l|profit and loss", "income"),
-    (r"cash flow statement|statement of cash flows?|cash flows? statement", "cash"),
-    (r"balance sheet|statement of financial position", "balance"),
-    (r"\bcapex\b|capital expenditure|\bd ?& ?a\b|depreciation|ebitda|cash from operations|\bfcf\b|free cash", "cash"),
-    (r"operating activities|financing activities|investing activities|dividends paid|cash dividends", "cash"),
-    (r"\bcogs\b|revenue|net income|operating income|operating margin|gross margin|net profit|\beps\b", "income"),
+# A question concept and the primary statement kinds that report its figures.
+_QUESTION_STATEMENTS: tuple[tuple[str, frozenset[str]], ...] = (
+    (r"income statement|statement of income|statement of operations|p ?& ?l|profit and loss", frozenset({"income"})),
+    (r"cash flow statement|statement of cash flows?|cash flows? statement", frozenset({"cash"})),
+    (r"balance sheet|statement of financial position", frozenset({"balance"})),
+    (
+        r"\bcapex\b|capital expenditure|\bd ?& ?a\b|depreciation|ebitda|cash from operations|\bfcf\b|free cash",
+        frozenset({"cash"}),
+    ),
+    (
+        r"operating activities|financing activities|investing activities|dividends paid|cash dividends",
+        frozenset({"cash"}),
+    ),
+    (
+        r"\bcogs\b|revenue|net income|operating income|operating margin|gross margin|net profit|\beps\b",
+        frozenset({"income"}),
+    ),
     # Capital intensity relates capital spending and fixed assets to revenue.
-    (r"capital.intensi|capital intensity|asset.(light|heavy)", "cash"),
-    (r"capital.intensi|capital intensity|asset.(light|heavy)", "balance"),
-    (r"capital.intensi|capital intensity|asset.(light|heavy)", "income"),
-    (r"\bppne\b|pp ?& ?e|total assets|current assets|current liabilities|working capital|quick ratio", "balance"),
-    (r"inventor|accounts payable|receivable|\broa\b|largest liability", "balance"),
-    (r"turnover|\broa\b|return on assets|\bdpo\b|\bdso\b|\bdio\b|conversion cycle", "income"),
+    (r"capital.intensi|capital intensity|asset.(light|heavy)", frozenset({"cash", "balance", "income"})),
+    (
+        r"\bppne\b|pp ?& ?e|total assets|current assets|current liabilities|working capital|quick ratio",
+        frozenset({"balance"}),
+    ),
+    (r"inventor|accounts payable|receivable|\broa\b|largest liability", frozenset({"balance"})),
+    (r"turnover|\broa\b|return on assets|\bdpo\b|\bdso\b|\bdio\b|conversion cycle", frozenset({"income"})),
 )
 
 
@@ -406,19 +425,34 @@ def _build_index(texts: Sequence[str]) -> _Index:
     return _Index(tuple(pages), frequency, max(average, 1.0))
 
 
-_CACHE: dict[str, _Index] = {}
+class _LastIndexCache:
+    """Keep the index of the most recently ranked page set, keyed by a digest of its texts.
+
+    Repeated questions over one unchanged corpus reuse its index instead of
+    re-tokenizing every page. The cache holds exactly one index for the process
+    lifetime and is replaced as soon as a different page set is ranked, so memory
+    stays bounded by one corpus. Indexes are immutable and fully determined by
+    their texts; concurrent callers can at worst build an equal index twice.
+    """
+
+    def __init__(self) -> None:
+        # One attribute holds the (key, index) pair so readers never see a torn update.
+        self._entry: tuple[str, _Index] | None = None
+
+    def get(self, texts: Sequence[str]) -> _Index:
+        digest = hashlib.sha256()
+        for text in texts:
+            digest.update(hashlib.sha256(text.encode("utf-8")).digest())
+        key = digest.hexdigest()
+        entry = self._entry
+        if entry is not None and entry[0] == key:
+            return entry[1]
+        index = _build_index(texts)
+        self._entry = (key, index)
+        return index
 
 
-def _index_for(texts: Sequence[str]) -> _Index:
-    digest = hashlib.sha256()
-    for text in texts:
-        digest.update(hashlib.sha256(text.encode("utf-8")).digest())
-    key = digest.hexdigest()
-    index = _CACHE.get(key)
-    if index is None:
-        _CACHE.clear()
-        index = _CACHE[key] = _build_index(texts)
-    return index
+_INDEX_CACHE = _LastIndexCache()
 
 
 def _document_parts(document: str) -> list[str]:
@@ -503,7 +537,7 @@ def _query(question: str) -> tuple[Counter[str], frozenset[str]]:
     for expansion in expansions:
         for feature, count in _features(_terms(expansion)).items():
             query[feature] += 0.5 * count
-    kinds = frozenset(kind for pattern, kind in _QUESTION_STATEMENTS if re.search(pattern, lowered))
+    kinds = frozenset().union(*(kinds for pattern, kinds in _QUESTION_STATEMENTS if re.search(pattern, lowered)))
     return query, kinds
 
 
@@ -530,7 +564,7 @@ def rank_pages(question: str, texts: Sequence[str], prior: Sequence[float] | Non
     """
     if not texts:
         return []
-    index = _index_for(texts)
+    index = _INDEX_CACHE.get(texts)
     documents = sorted({page.document for page in index.pages})
     document_scores = _document_scores(question, documents)
     best = max(document_scores.values(), default=0.0)
