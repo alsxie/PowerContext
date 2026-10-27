@@ -1,0 +1,8 @@
+.env
+powercontext.env
+.venv/
+__pycache__/
+dist/
+*.py[cod]
+*.qoder.site
+.DS_Store

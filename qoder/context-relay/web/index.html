@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="ContextRelay 用 PowerContext 保存研究进展、关键决策与下一步，让下一次工作从正确上下文继续。"
+    />
+    <meta name="theme-color" content="#f2efe8" />
+    <title>ContextRelay · 把研究接着做下去</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <div class="grain" aria-hidden="true"></div>
+    <header class="topbar">
+      <a class="brand" href="#workspace" aria-label="ContextRelay 工作台">
+        <span class="brand-mark" aria-hidden="true">CR</span>
+        <span>
+          <strong>ContextRelay</strong>
+          <small>研究工作接续台</small>
+        </span>
+      </a>
+      <nav aria-label="页面导航">
+        <a href="#workspace">工作台</a>
+        <a href="#evidence">技术验证</a>
+        <a href="#runbook">运行说明</a>
+      </nav>
+      <div class="mode-pill" id="mode-pill" data-mode="checking">
+        <span class="status-dot"></span>
+        <span id="mode-label">正在连接</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="workspace" id="workspace" aria-labelledby="workspace-title">
+        <div class="workspace-intro">
+          <div>
+            <p class="eyebrow">RESEARCH CONTINUITY / 研究连续性</p>
+            <h1 id="workspace-title">离开时留下路标，<br />回来时直接继续。</h1>
+          </div>
+          <p class="intro-copy">
+            不再重读聊天记录和散乱笔记。结束工作时保存进展、决策、阻塞与下一步；新会话按当前问题召回真正相关的上下文。
+          </p>
+        </div>
+
+        <div class="workbench">
+          <article class="panel capture-panel">
+            <header class="panel-header">
+              <div>
+                <span class="step-index">01</span>
+                <h2>结束本次工作</h2>
+              </div>
+              <span class="panel-note">约 60 秒</span>
+            </header>
+
+            <form id="checkpoint-form">
+              <label>
+                <span>项目</span>
+                <input id="project" name="project" value="小样本异常检测研究" maxlength="120" required />
+              </label>
+              <label>
+                <span>今天推进了什么？</span>
+                <textarea id="progress" name="progress" rows="3" maxlength="2000" required>完成基线复现实验，确认验证集上的 F1 为 0.71。</textarea>
+              </label>
+              <div class="field-grid">
+                <label>
+                  <span>关键决策</span>
+                  <textarea id="decision" name="decision" rows="3" maxlength="2000">采用按设备分组切分，避免同一设备数据泄漏到验证集。</textarea>
+                </label>
+                <label>
+                  <span>当前阻塞</span>
+                  <textarea id="blocker" name="blocker" rows="3" maxlength="2000">设备 C 的时间戳存在 8 小时偏移，需先统一时区。</textarea>
+                </label>
+              </div>
+              <label>
+                <span>下次第一步</span>
+                <textarea id="next-step" name="next_step" rows="2" maxlength="2000" required>修正设备 C 时区后重跑数据切分，并对比 F1 变化。</textarea>
+              </label>
+              <button class="primary-action" type="submit" id="save-button">
+                <span>写入工作记忆</span>
+                <span aria-hidden="true">↗</span>
+              </button>
+              <p class="form-status" id="save-status" role="status" aria-live="polite"></p>
+            </form>
+          </article>
+
+          <article class="panel resume-panel">
+            <header class="panel-header">
+              <div>
+                <span class="step-index">02</span>
+                <h2>继续下一次工作</h2>
+              </div>
+              <span class="panel-note">按需召回</span>
+            </header>
+
+            <form class="resume-search" id="resume-form">
+              <label for="query">你现在要继续什么？</label>
+              <div class="query-row">
+                <input id="query" name="query" value="设备 C 时区和验证集 F1" maxlength="500" required />
+                <button type="submit" id="resume-button" aria-label="生成接续包">生成接续包</button>
+              </div>
+            </form>
+
+            <section class="relay-package" aria-labelledby="package-title">
+              <div class="package-heading">
+                <div>
+                  <p class="eyebrow">CONTEXT PACKAGE</p>
+                  <h3 id="package-title">本次接续包</h3>
+                </div>
+                <span id="hit-count">3 条证据</span>
+              </div>
+              <div class="context-summary" id="context-summary">
+                <p><strong>现在从这里开始：</strong>先修正设备 C 的时区偏移，再重跑按设备分组的数据切分。</p>
+                <p><strong>判断结果时注意：</strong>当前基线 F1 为 0.71；保持切分策略不变，避免设备级数据泄漏。</p>
+              </div>
+              <ol class="evidence-list" id="evidence-list"></ol>
+              <div class="package-meta">
+                <span>PowerContext Memory</span>
+                <span id="context-size">示例上下文</span>
+              </div>
+            </section>
+          </article>
+        </div>
+      </section>
+
+      <section class="proof-section" id="evidence" aria-labelledby="proof-title">
+        <div class="section-heading">
+          <p class="eyebrow">VERIFIABLE BY DESIGN</p>
+          <h2 id="proof-title">不是“记住了”，而是能核对。</h2>
+          <p>每条结果都保留 Memory 条目标识、匹配方式与原文，可回到 PowerContext 核对写入和召回链路。</p>
+        </div>
+        <div class="proof-grid">
+          <article>
+            <span class="proof-number">A</span>
+            <h3>明确写入</h3>
+            <p>进展、决策、阻塞和下一步以不同 memory kind 写入同一项目 Scope。</p>
+            <code>remember_memory</code>
+          </article>
+          <article>
+            <span class="proof-number">B</span>
+            <h3>相关召回</h3>
+            <p>新会话只按当前问题检索，不把全部历史一股脑塞回上下文。</p>
+            <code>search_memory · FTS</code>
+          </article>
+          <article>
+            <span class="proof-number">C</span>
+            <h3>预算内组装</h3>
+            <p>把命中结果整理为有字节预算的接续包，直接供人或 Agent 使用。</p>
+            <code>prepare_context · 6 KB</code>
+          </article>
+        </div>
+      </section>
+
+      <section class="runbook-section" id="runbook" aria-labelledby="runbook-title">
+        <div class="runbook-card">
+          <div>
+            <p class="eyebrow">REPRODUCE THE FLOW</p>
+            <h2 id="runbook-title">三步验证真实记忆闭环</h2>
+            <p class="runbook-copy">站点当前可直接体验交互；按仓库说明启动本地服务后，状态会切换为“PowerContext 已连接”。</p>
+          </div>
+          <ol class="run-steps">
+            <li><span>1</span><p><strong>启动 PowerContext</strong><small>使用 Basic memory，无需模型 API Key。</small></p></li>
+            <li><span>2</span><p><strong>启动 ContextRelay</strong><small>同源提供网页与 API，默认监听 8088。</small></p></li>
+            <li><span>3</span><p><strong>保存后重新检索</strong><small>用同一关键词生成接续包，核对条目 ID。</small></p></li>
+          </ol>
+          <div class="runbook-links">
+            <a href="https://github.com/alsxie/PowerContext" target="_blank" rel="noreferrer">查看代码仓库 <span>↗</span></a>
+            <a href="#workspace">返回工作台 <span>↑</span></a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>ContextRelay · Built with Qoder + PowerContext</p>
+      <p>OceanBase 2026 生态伙伴数据库大赛参赛项目</p>
+    </footer>
+
+    <template id="evidence-template">
+      <li>
+        <span class="evidence-line" aria-hidden="true"></span>
+        <div>
+          <p></p>
+          <small></small>
+        </div>
+      </li>
+    </template>
+  </body>
+</html>
