@@ -71,6 +71,15 @@ def test_cross_batch_scores_are_selected_globally_with_rank_ties() -> None:
     assert max(len(call["candidates"]) for call in calls) <= 2
 
 
+@pytest.mark.parametrize(("count", "batch_size"), [(1, 1), (1, 32), (5, 1), (6, 3), (7, 3), (40, 32)])
+def test_usage_counts_requests_actually_sent(count: int, batch_size: int) -> None:
+    calls: list[dict] = []
+    scores = {rank: float(rank % 4) for rank in range(1, count + 1)}
+    decision = _run(_scoring(scores, calls), tuple(_hit(i) for i in range(1, count + 1)), 1, batch_size=batch_size)
+    assert decision.usage.requests == len(calls)
+    assert all(len(call["candidates"]) <= batch_size for call in calls)
+
+
 def test_http_status_errors_are_preserved() -> None:
     with pytest.raises(httpx.HTTPStatusError):
         _run(lambda _request: httpx.Response(503, json={"error": "down"}), (_hit(1),), 1)

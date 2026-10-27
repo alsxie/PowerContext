@@ -73,6 +73,7 @@ class HTTPMemoryReranker:
         _validate_bounds(len(candidates), limit)
         ranked = tuple(enumerate(candidates, start=1))
         scores: dict[int, float | int] = {}
+        requests = 0
         for start in range(0, len(ranked), self._batch_size):
             batch = ranked[start : start + self._batch_size]
             response = await self._client.post(
@@ -82,9 +83,9 @@ class HTTPMemoryReranker:
                     "candidates": [{"rank": rank, "text": hit.text} for rank, hit in batch],
                 },
             )
+            requests += 1
             response.raise_for_status()
             scores.update(_parse_scores(response.content, expected=frozenset(rank for rank, _ in batch)))
-        requests = math.ceil(len(ranked) / self._batch_size)
         selected = sorted(scores, key=lambda rank: (-scores[rank], rank))[:limit]
         return MemoryRerankDecision(selected_ranks=tuple(selected), usage=InferenceUsage(requests=requests))
 
