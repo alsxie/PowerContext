@@ -88,7 +88,7 @@ qoder/context-relay/
 - 项目源码：当前目录
 - 运行说明：本文件
 - 验证样例：本文件“验证样例”章节
-- 项目网站：通过 Qoder Sites 准备并发布后填写
-- Qoder 账号 UID 与开发记录截图：在测试平台提交时填写和上传
+- 项目网站：https://context-relay-gn4q4lsgoc0.qoder.website
+- Qoder 开发记录：本文件“Qoder 开发记录”章节
 
 配置文件只保留占位值，不提交 API Key、密码或 Token。
