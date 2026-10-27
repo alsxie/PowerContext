@@ -231,8 +231,15 @@ def main() -> int:
         timings[name] = round(time.perf_counter() - t, 2)
         print(f"[quant] {name} -> {dst.name} ({timings[name]}s)")
 
+    # 跳过已存在的量化产物时保留上次记录的量化耗时
+    old = MODELS / "manifest.json"
+    if old.exists():
+        timings = {**json.loads(old.read_text(encoding="utf-8")).get("quantize_seconds", {}), **timings}
     variants = {"fp32": fp32, "fp16": fp16, "int8": int8, "wq8": wq8}
     base_size = fp32.stat().st_size
+    # 同一口径：浏览器加载一个精度变体时实际下载的全部文件 = 该 onnx + 共享的 tokenizer/config
+    shared = {rel: (target / rel).stat().st_size for rel in FILES if not rel.endswith(".onnx")}
+    shared_bytes = sum(shared.values())
     manifest = {
         "author": "FDE WorkMate",
         "model_id": REPO,
@@ -250,6 +257,8 @@ def main() -> int:
             "wq8": "Gather: quantize_dynamic(QInt8) + MatMul: MatMulNBitsQuantizer(bits=8, block_size=32, symmetric)",
         },
         "quantize_seconds": timings,
+        "shared_files": shared,
+        "shared_bytes": shared_bytes,
     }
     for name, path in variants.items():
         size = path.stat().st_size
@@ -258,6 +267,9 @@ def main() -> int:
             "bytes": size,
             "mb": round(size / 1024 / 1024, 2),
             "compression_ratio": round(base_size / size, 3),
+            "total_bytes": size + shared_bytes,
+            "total_mb": round((size + shared_bytes) / 1024 / 1024, 2),
+            "total_compression_ratio": round((base_size + shared_bytes) / (size + shared_bytes), 3),
             "sha256": sha256(path),
         }
     manifest["offline_sanity"] = sanity(target, variants)

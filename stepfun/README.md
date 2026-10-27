@@ -5,7 +5,7 @@
 seekdb × 阶跃星辰赛题「端侧 AI 推理性能优化与 seekdb 混合检索」的提交作品。文档和查询都在浏览器里本地向量化（Transformers.js + ONNX Runtime Web，优先 WebGPU，不可用时自动降级到 WASM）。向量、原文和元数据写入 seekdb（seekdb-js 嵌入式模式），检索时由 seekdb 的 `DBMS_HYBRID_SEARCH` 在库内完成向量与全文召回和 RRF 融合。
 
 - 一页技术说明：[docs/技术说明.md](docs/技术说明.md)
-- 实测汇总：[bench/summary.md](bench/summary.md)；原始数据：`bench/results/*.json`；参数调优：`bench/tuning/`
+- 实测汇总：[bench/summary.md](bench/summary.md)；原始数据：`bench/results/*.json`；参数调优：`bench/tuning/`；统计检验：[bench/analysis.md](bench/analysis.md)
 - 端到端验收记录：`bench/e2e.json`，截图 `docs/e2e-*.png`
 
 ## 目录
@@ -54,7 +54,7 @@ npm start                                # 打开 .runtime/seekdb（嵌入式）
 
 常用环境变量：`KB_PORT`（默认 8787）、`SEEKDB_PATH`（默认 `.runtime/seekdb`）、`KB_FTS_ANALYZER`（默认 `ik`）、`KB_RRF_K`（默认 10）、`KB_RRF_WINDOW_FACTOR`（默认 2）。
 
-> 安全提示：API 没有鉴权，默认只监听 127.0.0.1。如果改成对外监听，请自行加反向代理和鉴权。
+> 安全提示：API 没有鉴权，默认只监听 127.0.0.1，并校验 Host 白名单、同源 Origin 和 JSON Content-Type，用来防 CSRF 和 DNS rebinding。如果改成对外监听，需要用 `KB_ALLOWED_HOSTS` 加入实际域名，并自行加反向代理和鉴权。
 
 ## 使用
 
@@ -67,12 +67,13 @@ npm start                                # 打开 .runtime/seekdb（嵌入式）
 ## 复现测试
 
 ```bash
-npm test                         # 数据层集成测试（8 项）
+npm test                         # 数据层集成测试 8 项 + HTTP 跨站防护 5 项
 npm start &                      # 下面两个脚本需要服务在运行
 node scripts/e2e.mjs             # 应用页端到端：WebGPU 可用 + --disable-gpu 两种环境
 node scripts/bench.mjs           # 基准矩阵（约 30 分钟），每个配置 1 冷 + 2 热，结果写入 bench/results
 node scripts/bench.mjs --only fp16-webgpu,int8-wasm --repeat 2
 node scripts/bench.mjs --summary # 只根据已有原始数据重新生成 bench/summary.md
+uv run python scripts/analyze.py # 逐查询配对检验：量化/检索模式的 95% CI，RRF 参数交叉验证 → bench/analysis.md
 uv run python scripts/build_dataset.py   # 重新生成评测集（固定种子，结果与仓库一致）
 ```
 

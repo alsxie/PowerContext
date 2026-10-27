@@ -79,6 +79,32 @@ function serveStatic(req, res, base, rel, { immutable = false } = {}) {
   return true;
 }
 
+/**
+ * 本地 API 的跨站防护（API 无鉴权，必须防止任意网页借用户浏览器调用 127.0.0.1）：
+ * - Host 白名单：防 DNS rebinding（恶意域名解析到 127.0.0.1 后同源访问）；
+ * - Origin 必须与本服务同源：拦截跨站 fetch/表单；
+ * - 写请求必须是 application/json：简单请求（表单、text/plain）无法伪造，跨站 JSON 请求会触发预检，而本服务不响应 CORS。
+ */
+export function checkRequest(req, config) {
+  const hostHeader = String(req.headers.host || "");
+  const hostname = hostHeader.replace(/:\d+$/, "").replace(/^\[|\]$/g, "").toLowerCase();
+  if (!config.allowedHosts.includes(hostname)) return `Host 不在白名单：${hostHeader}`;
+  const origin = req.headers.origin;
+  if (origin && origin !== "null") {
+    let o;
+    try {
+      o = new URL(origin);
+    } catch {
+      return "Origin 无效";
+    }
+    if (o.host.toLowerCase() !== hostHeader.toLowerCase()) return `跨站请求被拒绝：${origin}`;
+  } else if (origin === "null") return "跨站请求被拒绝：Origin null";
+  if (!["GET", "HEAD"].includes(req.method) && req.method !== "DELETE") {
+    if (!String(req.headers["content-type"] || "").toLowerCase().startsWith("application/json")) return "写请求必须使用 application/json";
+  }
+  return null;
+}
+
 export function createApp(service, config) {
   const routes = [
     ["GET", /^\/api\/health$/, async () => ({ ok: true, seekdb: service.version, readiness: service.readiness, database: config.database, dbPath: config.dbPath })],
@@ -104,6 +130,8 @@ export function createApp(service, config) {
     const p = url.pathname;
     try {
       if (p.startsWith("/api/")) {
+        const denied = checkRequest(req, config);
+        if (denied) throw new HttpError(403, denied);
         for (const [method, re, fn] of routes) {
           const m = p.match(re);
           if (m && method === req.method) {

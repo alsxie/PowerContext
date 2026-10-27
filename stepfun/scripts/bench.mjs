@@ -40,6 +40,9 @@ export const MATRIX = [
   { label: "ablate-nosort", dtype: "fp16", backend: "webgpu", ...OPT, sort: 0 },
   { label: "ablate-upsert", dtype: "fp16", backend: "webgpu", ...OPT, writeMode: "upsert" },
   { label: "ablate-refresh-each16", dtype: "fp16", backend: "webgpu", ...OPT, send: 16, commitPerSend: 1 },
+  // 批大小扫描：WebGPU 用 FP16、WASM 用 INT8（各自的默认精度），其余为优化后参数
+  ...[1, 8, 16, 32, 64, 128].map((batch) => ({ label: `sweep-fp16-webgpu-b${batch}`, dtype: "fp16", backend: "webgpu", ...OPT, batch, modes: "hybrid" })),
+  ...[8, 16, 32, 64].map((batch) => ({ label: `sweep-int8-wasm-b${batch}`, dtype: "int8", backend: "wasm", ...OPT, batch, modes: "hybrid" })),
   // 质量评测：每种精度 × 后端各一次，含精确向量检索（exact），用于量化前后质量对比
   ...["fp32", "fp16", "int8", "wq8"].flatMap((dtype) => ["webgpu", "wasm"].map((backend) => ({ label: `quality-${dtype}-${backend}`, dtype, backend, ...OPT, quality: 1 }))),
   // 降级路径：backend=auto，但浏览器以 --disable-gpu 启动（requestAdapter 返回 null），应自动走 WASM
@@ -117,7 +120,7 @@ export function summarize() {
   const order = MATRIX.map((m) => m.label);
   const allLabels = [...groups.keys()].sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99) || a.localeCompare(b));
   // quality-* 为专门的质量评测运行（含精确检索），只进入质量表
-  const labels = allLabels.filter((l) => !l.startsWith("quality-"));
+  const labels = allLabels.filter((l) => !l.startsWith("quality-") && !l.startsWith("sweep-"));
   const lines = [];
   const env = groups.size ? [...groups.values()][0][0] : null;
   lines.push("# 基准测试汇总（自动生成）", "", "作者：FDE WorkMate", "");
@@ -161,7 +164,7 @@ export function summarize() {
   lines.push("", "## 检索质量（100 条查询，均值 [最小, 最大]）", "");
   lines.push("| 配置 | 运行数 | 精确向量 nDCG@10 | 精确向量 Recall@10 | HNSW 向量 nDCG@10 | HNSW 向量 Recall@10 | 混合 nDCG@10 | 混合 Recall@10 | 混合 MRR@10 | 全文 nDCG@10 |");
   lines.push("|---|---|---|---|---|---|---|---|---|---|");
-  for (const label of allLabels) {
+  for (const label of allLabels.filter((l) => !l.startsWith("sweep-"))) {
     const rs = groups.get(label);
     const cell = (mode, k) => {
       const v = rs.map((r) => r.quality?.[mode]?.[k]).filter(Number.isFinite);
@@ -170,6 +173,16 @@ export function summarize() {
       return v.length > 1 && Math.max(...v) - Math.min(...v) > 1e-9 ? `${f(avg, 4)} [${f(Math.min(...v), 3)}, ${f(Math.max(...v), 3)}]` : f(avg, 4);
     };
     lines.push(`| ${label} | ${rs.length} | ${cell("exact", "ndcg10")} | ${cell("exact", "recall10")} | ${cell("vector", "ndcg10")} | ${cell("vector", "recall10")} | ${cell("hybrid", "ndcg10")} | ${cell("hybrid", "recall10")} | ${cell("hybrid", "mrr10")} | ${cell("fulltext", "ndcg10")} |`);
+  }
+  const sweeps = allLabels.filter((l) => l.startsWith("sweep-"));
+  if (sweeps.length) {
+    lines.push("", "## 推理批大小扫描（中位数）", "");
+    lines.push("| 配置 | 运行数 | 向量化吞吐 段/s | 2000 段向量化 ms | 导入总耗时 s | 预热推理 ms |");
+    lines.push("|---|---|---|---|---|---|");
+    for (const label of sweeps) {
+      const rs = groups.get(label);
+      lines.push(`| ${label} | ${rs.length} | ${f(med(rs.flatMap((r) => [r.ingest1, r.ingest2].map((t) => t.chunks / (t.embedMs / 1000)))))} | ${f(med(rs.map((r) => r.ingest1.embedMs + r.ingest2.embedMs)), 0)} | ${f(med(rs.map((r) => (r.ingest1.totalMs + r.ingest2.totalMs) / 1000)), 1)} | ${f(med(rs.map((r) => r.load.warmupMs)), 0)} |`);
+    }
   }
   lines.push("", `原始数据：bench/results/（${files.length} 个文件）`);
   const out = path.join(ROOT, "bench", "summary.md");

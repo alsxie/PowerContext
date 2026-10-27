@@ -14,6 +14,9 @@
       "bytes": 94851877,
       "mb": 90.46,
       "compression_ratio": 1.0,
+      "total_bytes": 95292210,
+      "total_mb": 90.88,
+      "total_compression_ratio": 1.0,
       "sha256": "69a0b846f4f116b5e6aabf9546ea6754d02264f3211a13a1bd69b31b8040749a"
     },
     "fp16": {
@@ -21,6 +24,9 @@
       "bytes": 47497427,
       "mb": 45.3,
       "compression_ratio": 1.997,
+      "total_bytes": 47937760,
+      "total_mb": 45.72,
+      "total_compression_ratio": 1.988,
       "sha256": "8e785b3017e6ab0b78310118ead69ffed5a6049b67f6ac1350eabccc8f1bf6bc"
     },
     "int8": {
@@ -28,6 +34,9 @@
       "bytes": 24011364,
       "mb": 22.9,
       "compression_ratio": 3.95,
+      "total_bytes": 24451697,
+      "total_mb": 23.32,
+      "total_compression_ratio": 3.897,
       "sha256": "3878b70c12c509d4ada124df758cbeebf331a4f174b0d47a30bea5dc41aab9a4"
     },
     "wq8": {
@@ -35,6 +44,9 @@
       "bytes": 25466883,
       "mb": 24.29,
       "compression_ratio": 3.725,
+      "total_bytes": 25907216,
+      "total_mb": 24.71,
+      "total_compression_ratio": 3.678,
       "sha256": "9f7ed2f650f6c648b5b7bde006db5c749c554f5313de61aa96851ee4e20c5e5b"
     }
   },
@@ -44,8 +56,17 @@
     "wq8": "Gather: quantize_dynamic(QInt8) + MatMul: MatMulNBitsQuantizer(bits=8, block_size=32, symmetric)"
   },
   "quantize_seconds": {
-    "wq8": 1.26
+    "int8": 0.71,
+    "fp16": 0.26,
+    "wq8": 0.63
   },
+  "shared_files": {
+    "config.json": 716,
+    "tokenizer.json": 439125,
+    "tokenizer_config.json": 367,
+    "special_tokens_map.json": 125
+  },
+  "shared_bytes": 440333,
   "offline_sanity": {
     "fp16": {
       "min_cosine_vs_fp32": 0.9999997019767761,

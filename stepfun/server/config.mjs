@@ -9,6 +9,8 @@ export function loadConfig(env = process.env) {
   return {
     host: env.KB_HOST || "127.0.0.1",
     port: Number(env.KB_PORT || 8787),
+    // API 允许的 Host 名（防 DNS rebinding）；对外监听时需把实际域名/IP 加进来
+    allowedHosts: [...new Set(["127.0.0.1", "localhost", "::1", env.KB_HOST, ...(env.KB_ALLOWED_HOSTS || "").split(",")].filter(Boolean).map((h) => h.trim().toLowerCase()))],
     // seekdb 嵌入式数据目录（seekdb-js 的 path 参数）
     dbPath: path.resolve(ROOT, env.SEEKDB_PATH || ".runtime/seekdb"),
     database: env.SEEKDB_DATABASE || "edge_kb",

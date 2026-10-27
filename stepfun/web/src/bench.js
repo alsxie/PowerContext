@@ -121,10 +121,11 @@ async function run() {
 
     if (cfg.grid) {
       result.hybridGrid = [];
-      for (const rankConstant of [10, 30, 60]) {
-        for (const window of [20, 40, 100]) {
+      for (const rankConstant of [5, 10, 20, 30, 60]) {
+        for (const window of [10, 20, 40, 100]) {
           const e = await evaluate(kb, queries, embedder, signature, "hybrid", { rankConstant, window });
-          result.hybridGrid.push({ rankConstant, window, recall10: e.recall10, ndcg10: e.ndcg10, mrr10: e.mrr10 });
+          // 保存逐查询结果，供 scripts/analyze.py 做交叉验证（避免在测试查询上调参后直接报告同一批查询的分数）
+          result.hybridGrid.push({ rankConstant, window, recall10: e.recall10, ndcg10: e.ndcg10, mrr10: e.mrr10, perQuery: e.rows.map(({ timing, ...r }) => r) });
           log(`RRF k=${rankConstant} window=${window}`, { recall10: e.recall10.toFixed(4), ndcg10: e.ndcg10.toFixed(4) });
         }
       }
