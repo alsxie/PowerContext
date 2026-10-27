@@ -95,11 +95,23 @@ def _decode_items(values: object, field: str) -> tuple[bytes, ...]:
     return tuple(items)
 
 
+def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    # ``json.loads`` silently keeps the last duplicate; an ambiguous object is not a valid wire form.
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ContextPackError("wire payload contains a duplicate JSON key")  # noqa: TRY003
+        result[key] = value
+    return result
+
+
 def _load_object(data: bytes, fields: frozenset[str], schema: str) -> dict[str, Any]:
     if not isinstance(data, bytes | bytearray | memoryview):
         raise ContextPackError("wire payload must be bytes")  # noqa: TRY003
     try:
-        payload = json.loads(bytes(data).decode("utf-8"))
+        payload = json.loads(bytes(data).decode("utf-8"), object_pairs_hook=_unique_object)
+    except ContextPackError:
+        raise
     except (UnicodeDecodeError, ValueError, RecursionError) as error:
         raise ContextPackError("wire payload is not UTF-8 JSON") from error  # noqa: TRY003
     if not isinstance(payload, dict):
@@ -278,6 +290,10 @@ def aligned_context_pack(base: ContextPack, content: str, *, chunk_bytes: int = 
     Leading base chunks are reused verbatim while ``content`` keeps matching them; the
     remaining suffix is chunked with the regular :meth:`ContextPack.from_content` rules.
     Reused chunks are complete UTF-8 sequences, so the suffix starts on a character boundary.
+
+    The canonical :meth:`ContextPack.from_content` chunking is returned instead whenever it
+    reuses at least as many base bytes and its delta against ``base`` is no larger, so the
+    target equals the canonical pack (same items and digest) whenever that costs nothing.
     """
     if not isinstance(content, str):
         raise ContextPackError("content must be text")  # noqa: TRY003
@@ -294,7 +310,24 @@ def aligned_context_pack(base: ContextPack, content: str, *, chunk_bytes: int = 
             break
         reused.append(item)
         position += len(item)
-    return ContextPack.build((*reused, *_chunk(data[position:], limit)))
+    aligned = ContextPack.build((*reused, *_chunk(data[position:], limit)))
+    canonical = ContextPack.build(_chunk(data, limit))
+    if canonical == aligned:
+        return canonical
+    if _shared_prefix_bytes(base, canonical) >= _shared_prefix_bytes(base, aligned) and len(
+        ContextPackDelta.between(base, canonical).to_bytes()
+    ) <= len(ContextPackDelta.between(base, aligned).to_bytes()):
+        return canonical
+    return aligned
+
+
+def _shared_prefix_bytes(base: ContextPack, target: ContextPack) -> int:
+    shared = 0
+    for left, right in zip(base.items, target.items, strict=False):
+        if left != right:
+            break
+        shared += len(left)
+    return shared
 
 
 def _cut_points(data: bytes) -> tuple[set[int], set[int]]:

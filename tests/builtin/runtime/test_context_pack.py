@@ -16,6 +16,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from powercontext.builtin.runtime.context_pack import (
@@ -108,3 +110,78 @@ def test_non_canonical_base64_is_rejected() -> None:
     payload = ContextPack.build((b"a",)).to_bytes().replace(b'"YQ=="', b'"YR=="')
     with pytest.raises(ContextPackError):
         ContextPack.from_bytes(payload)
+
+
+def _rebuild(base: ContextPack, target: ContextPack) -> tuple[ContextPack, ContextPackDelta]:
+    wire = ContextPackDelta.between(base, target).to_bytes()
+    delta = ContextPackDelta.from_bytes(wire)
+    return apply_context_pack_delta(ContextPack.from_bytes(base.to_bytes()), delta), delta
+
+
+def test_alignment_prefers_canonical_chunking_when_it_costs_nothing() -> None:
+    # Reusing the base chunk ':' would split a marker the canonical chunking keeps whole,
+    # yet both choices share the same base bytes and cost the same on the wire.
+    base = ContextPack.build((b'{"citation"', b':"revision"', b":", "\u00e9b11ba".encode()))
+    content = '{"citation":"revision"revision":a\n'
+    canonical = ContextPack.from_content(content, chunk_bytes=11)
+    target = aligned_context_pack(base, content, chunk_bytes=11)
+    assert target == canonical
+    rebuilt, delta = _rebuild(base, target)
+    assert rebuilt.digest == delta.target_digest == canonical.digest
+    assert rebuilt.text() == content
+
+
+def test_alignment_keeps_reuse_when_canonical_chunking_costs_more() -> None:
+    base = ContextPack.from_content("x" * 10 + '{"citation":1}')
+    content = "x" * 10 + "yyyy"
+    target = aligned_context_pack(base, content)
+    canonical = ContextPack.from_content(content)
+    assert target.items == (b"x" * 10, b"yyyy")
+    assert len(ContextPackDelta.between(base, target).to_bytes()) < len(
+        ContextPackDelta.between(base, canonical).to_bytes()
+    )
+    rebuilt, delta = _rebuild(base, target)
+    assert rebuilt.digest == delta.target_digest == target.digest
+    assert rebuilt.text() == content
+
+
+def test_reconstructed_chain_matches_canonical_packs() -> None:
+    base = ContextPack.from_content(_context(1))
+    for content in (_context(2), _context(2, extra="note\n"), _context(3), _context(3), ""):
+        rebuilt, delta = _rebuild(base, aligned_context_pack(base, content))
+        assert rebuilt.digest == delta.target_digest == ContextPack.from_content(content).digest
+        base = rebuilt
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b'{"schema":"x","schema":"powercontext.context-pack.v1","items":[],"digest":"sha256:'
+        + b"0" * 64
+        + b'","byte_count":0}',
+        b'{"byte_count":1,"byte_count":152,"digest":"DIGEST","items":[],"schema":"powercontext.context-pack.v1"}',
+    ],
+)
+def test_pack_with_duplicate_keys_is_rejected(payload: bytes) -> None:
+    payload = payload.replace(b"DIGEST", ContextPack.build(()).digest.encode())
+    with pytest.raises(ContextPackError, match="duplicate"):
+        ContextPack.from_bytes(payload)
+
+
+def test_delta_with_duplicate_keys_is_rejected() -> None:
+    base = ContextPack.from_content("a")
+    wire = ContextPackDelta.between(base, ContextPack.from_content("ab")).to_bytes()
+    assert ContextPackDelta.from_bytes(wire).prefix_items == 0
+    duplicated = wire.replace(b'"prefix_items":0', b'"prefix_items":1,"prefix_items":0')
+    with pytest.raises(ContextPackError, match="duplicate"):
+        ContextPackDelta.from_bytes(duplicated)
+
+
+def test_whitespace_separated_json_is_still_accepted() -> None:
+    pack = ContextPack.from_content(_context(1))
+    spaced = json.dumps(json.loads(pack.to_bytes()), indent=2).encode()
+    assert ContextPack.from_bytes(spaced) == pack
+    target = aligned_context_pack(pack, _context(2))
+    delta = ContextPackDelta.between(pack, target)
+    spaced_delta = json.dumps(json.loads(delta.to_bytes())).encode()
+    assert apply_context_pack_delta(pack, ContextPackDelta.from_bytes(spaced_delta)) == target

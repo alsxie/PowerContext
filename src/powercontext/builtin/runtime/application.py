@@ -879,7 +879,9 @@ class ScopedContextApplication:
 
         The target text is exactly the ordinary ``prepare`` content (``None`` maps to an
         empty pack). With a base, the target is chunked to reuse the longest run of leading
-        base chunks, so only the changed suffix is transmitted.
+        base chunks, so only the changed suffix is transmitted; when the canonical
+        ``ContextPack.from_content`` chunking reuses as much at no extra wire cost, the
+        target is exactly that canonical pack.
         """
         if base_pack is not None:
             if not isinstance(base_pack, ContextPack):
