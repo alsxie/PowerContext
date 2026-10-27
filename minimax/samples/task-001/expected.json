@@ -1,0 +1,9 @@
+{
+  "author": "作者：FDE WorkMate",
+  "description": "TASK-001 的上下文中必须出现的规格、代码和测试来源（用于 sddctx check）",
+  "specs": ["REQ-ORD-004", "ADR-002", "REQ-ORD-001", "REQ-ORD-002", "REQ-ORD-003"],
+  "superseded": ["ADR-001"],
+  "edit_targets": ["OrderQueryService.list_orders"],
+  "functional_tests": ["tests/test_status_filter.py"],
+  "regression_tests": ["tests/test_listing.py", "tests/test_billing.py"]
+}

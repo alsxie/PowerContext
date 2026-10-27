@@ -1,0 +1,31 @@
+{
+  "at": "2026-10-27T16:02:38+00:00",
+  "mode": "live",
+  "id": "072ffe0dfbf738ca062736515ca6e91d",
+  "model": "MiniMax-M3.1-Flash",
+  "usage": {
+    "input_tokens": 3051,
+    "output_tokens": 1950,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 128,
+    "output_tokens_details": {
+      "thinking_tokens": 1156
+    }
+  },
+  "finish_reason": "end_turn",
+  "content_block_types": [
+    "thinking",
+    "text"
+  ],
+  "content": "为 `list_orders` 增加可选 `statuses` 参数，支持 `OrderStatus` 及其字符串值。  \n校验空集合和未知状态并抛出参数名为 `statuses` 的 `InvalidQueryError`。  \n筛选在排序和分页前执行，保持原排序、分页及消费总额行为不变。  \n<file path=\"orders/service.py>\n# 作者：FDE WorkMate\n\"\"\"订单查询服务。\"\"\"\n\nfrom __future__ import annotations\n\nfrom collections.abc import Collection\n\nfrom orders.errors import InvalidQueryError\nfrom orders.models import Order, OrderStatus, Page\nfrom orders.repository import InMemoryOrderRepository\n\nMAX_PAGE_SIZE = 100\n\n\nclass OrderQueryService:\n    \"\"\"面向客户的订单查询入口。\"\"\"\n\n    def __init__(self, repository: InMemoryOrderRepository) -> None:\n        self._repository = repository\n\n    def list_orders(\n        self,\n        customer_id: str,\n        *,\n        page: int = 1,\n        page_size: int = 20,\n        statuses: Collection[OrderStatus | str] | None = None,\n    ) -> Page:\n        \"\"\"列出客户订单：按状态筛选后，按创建时间倒序、订单号升序打破平局，再分页。\"\"\"\n\n        _validate_pagination(page, page_size)\n        status_filter = _validate_statuses(statuses)\n\n        orders = self._repository.by_customer(customer_id)\n        if status_filter is not None:\n            orders = [\n                order\n                for order in orders\n                if _status_value(order.status) in status_filter\n            ]\n\n        ordered = sorted(orders, key=_listing_key)\n        start = (page - 1) * page_size\n        return Page(\n            items=ordered[start : start + page_size],\n            total=len(ordered),\n            page=page,\n            page_size=page_size,\n        )\n\n    def total_amount_cents(self, customer_id: str) -> int:\n        \"\"\"客户全部订单金额之和，单位为分（REQ-ORD-003）。\"\"\"\n\n        return sum(order.amount_cents for order in self._repository.by_customer(customer_id))\n\n\ndef _listing_key(order: Order) -> tuple[float, str]:\n    return (-order.created_at.timestamp(), order.order_id)\n\n\ndef _status_value(status: OrderStatus | str) -> str:\n    if isinstance(status, OrderStatus):\n        return status.value\n    return status\n\n\ndef _validate_statuses(\n    statuses: Collection[OrderStatus | str] | None,\n) -> set[str] | None:\n    if statuses is None:\n        return None\n\n    if isinstance(statuses, (str, bytes)) or not isinstance(statuses, Collection):\n        raise InvalidQueryError(\"statuses\", \"must be a collection of valid order statuses\")\n\n    if not statuses:\n        raise InvalidQueryError(\"statuses\", \"must not be empty\")\n\n    valid_statuses = {status.value for status in OrderStatus}\n    validated: set[str] = set()\n\n    for status in statuses:\n        if isinstance(status, OrderStatus):\n            value = status.value\n        elif isinstance(status, str) and status in valid_statuses:\n            value = status\n        else:\n            raise InvalidQueryError(\n                \"statuses\",\n                \"must contain only valid order statuses\",\n            )\n        validated.add(value)\n\n    return validated\n\n\ndef _validate_pagination(page: int, page_size: int) -> None:\n    if not isinstance(page, int) or isinstance(page, bool) or page < 1:\n        raise InvalidQueryError(\"page\", \"must be an integer >= 1\")\n    if not isinstance(page_size, int) or isinstance(page_size, bool) or not 1 <= page_size <= MAX_PAGE_SIZE:\n        raise InvalidQueryError(\"page_size\", f\"must be an integer between 1 and {MAX_PAGE_SIZE}\")\n</file>",
+  "api_style": "anthropic",
+  "endpoint": "https://api.minimax.cn/anthropic/v1/messages",
+  "request_options": {
+    "model": "MiniMax-M3.1-Flash",
+    "max_tokens": 32000,
+    "output_config": {
+      "effort": "high"
+    }
+  },
+  "latency_s": 17.75
+}

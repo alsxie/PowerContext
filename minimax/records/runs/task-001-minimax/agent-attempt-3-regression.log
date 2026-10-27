@@ -1,0 +1,6 @@
+$ (cd minimax/.work/sample_app && python -m pytest -q --junitxml=agent-attempt-3-regression.junit.xml tests/test_billing.py tests/test_listing.py)
+.........                                                                [100%]
+- generated xml file: /Users/wenzhifeng/Public/WorkMateSpace/sessions/01a17dee-5389-7e63-8e8d-0f033a8a27b3/repo/minimax/records/runs/task-001-minimax/agent-attempt-3-regression.junit.xml -
+9 passed in 0.01s
+
+exit_code=0

@@ -1,0 +1,91 @@
+$ (cd minimax/.work/sample_app && python -m pytest -q --junitxml=baseline-functional.junit.xml tests/test_status_filter.py)
+FFFFFFF                                                                  [100%]
+=================================== FAILURES ===================================
+___________________ test_filter_by_status_set_keeps_sorting ____________________
+
+service = <orders.service.OrderQueryService object at 0x10689ae70>
+
+    def test_filter_by_status_set_keeps_sorting(service: OrderQueryService) -> None:
+>       page = service.list_orders("c-001", statuses={OrderStatus.PAID, OrderStatus.SHIPPED})
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: OrderQueryService.list_orders() got an unexpected keyword argument 'statuses'
+
+tests/test_status_filter.py:20: TypeError
+______________________ test_filter_accepts_string_values _______________________
+
+service = <orders.service.OrderQueryService object at 0x10689b830>
+
+    def test_filter_accepts_string_values(service: OrderQueryService) -> None:
+>       page = service.list_orders("c-001", statuses=["refunded", "cancelled"])
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: OrderQueryService.list_orders() got an unexpected keyword argument 'statuses'
+
+tests/test_status_filter.py:26: TypeError
+____________________ test_filter_applies_before_pagination _____________________
+
+service = <orders.service.OrderQueryService object at 0x10bc60680>
+
+    def test_filter_applies_before_pagination(service: OrderQueryService) -> None:
+>       page = service.list_orders("c-001", statuses=("paid", "shipped", "pending"), page=2, page_size=3)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: OrderQueryService.list_orders() got an unexpected keyword argument 'statuses'
+
+tests/test_status_filter.py:31: TypeError
+__________________ test_none_statuses_keeps_original_listing ___________________
+
+service = <orders.service.OrderQueryService object at 0x10689ba40>
+
+    def test_none_statuses_keeps_original_listing(service: OrderQueryService) -> None:
+>       assert service.list_orders("c-001", statuses=None) == service.list_orders("c-001")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: OrderQueryService.list_orders() got an unexpected keyword argument 'statuses'
+
+tests/test_status_filter.py:37: TypeError
+__________ test_invalid_statuses_raise_with_parameter_name[statuses0] __________
+
+service = <orders.service.OrderQueryService object at 0x10bc60620>
+statuses = []
+
+    @pytest.mark.parametrize("statuses", [[], ["paid", "lost"], ["PAID-X"]])
+    def test_invalid_statuses_raise_with_parameter_name(service: OrderQueryService, statuses: list[str]) -> None:
+        with pytest.raises(InvalidQueryError) as error:
+>           service.list_orders("c-001", statuses=statuses)
+E           TypeError: OrderQueryService.list_orders() got an unexpected keyword argument 'statuses'
+
+tests/test_status_filter.py:43: TypeError
+__________ test_invalid_statuses_raise_with_parameter_name[statuses1] __________
+
+service = <orders.service.OrderQueryService object at 0x10bc62840>
+statuses = ['paid', 'lost']
+
+    @pytest.mark.parametrize("statuses", [[], ["paid", "lost"], ["PAID-X"]])
+    def test_invalid_statuses_raise_with_parameter_name(service: OrderQueryService, statuses: list[str]) -> None:
+        with pytest.raises(InvalidQueryError) as error:
+>           service.list_orders("c-001", statuses=statuses)
+E           TypeError: OrderQueryService.list_orders() got an unexpected keyword argument 'statuses'
+
+tests/test_status_filter.py:43: TypeError
+__________ test_invalid_statuses_raise_with_parameter_name[statuses2] __________
+
+service = <orders.service.OrderQueryService object at 0x10bc61580>
+statuses = ['PAID-X']
+
+    @pytest.mark.parametrize("statuses", [[], ["paid", "lost"], ["PAID-X"]])
+    def test_invalid_statuses_raise_with_parameter_name(service: OrderQueryService, statuses: list[str]) -> None:
+        with pytest.raises(InvalidQueryError) as error:
+>           service.list_orders("c-001", statuses=statuses)
+E           TypeError: OrderQueryService.list_orders() got an unexpected keyword argument 'statuses'
+
+tests/test_status_filter.py:43: TypeError
+- generated xml file: /Users/wenzhifeng/Public/WorkMateSpace/sessions/01a17dee-5389-7e63-8e8d-0f033a8a27b3/repo/minimax/records/runs/task-001-minimax/baseline-functional.junit.xml -
+=========================== short test summary info ============================
+FAILED tests/test_status_filter.py::test_filter_by_status_set_keeps_sorting
+FAILED tests/test_status_filter.py::test_filter_accepts_string_values - TypeE...
+FAILED tests/test_status_filter.py::test_filter_applies_before_pagination - T...
+FAILED tests/test_status_filter.py::test_none_statuses_keeps_original_listing
+FAILED tests/test_status_filter.py::test_invalid_statuses_raise_with_parameter_name[statuses0]
+FAILED tests/test_status_filter.py::test_invalid_statuses_raise_with_parameter_name[statuses1]
+FAILED tests/test_status_filter.py::test_invalid_statuses_raise_with_parameter_name[statuses2]
+7 failed in 0.02s
+
+exit_code=1

@@ -1,0 +1,10 @@
+{
+  "author": "作者：FDE WorkMate",
+  "description": "把 spec-update/specs/orders.md 覆盖到业务工程并重新导入后，上下文必须使用更新后的 REQ-ORD-004",
+  "specs": ["REQ-ORD-004", "ADR-002", "REQ-ORD-001", "REQ-ORD-002", "REQ-ORD-003"],
+  "superseded": ["ADR-001"],
+  "edit_targets": ["OrderQueryService.list_orders"],
+  "functional_tests": ["tests/test_status_filter.py"],
+  "regression_tests": ["tests/test_listing.py", "tests/test_billing.py"],
+  "spec_contains": {"REQ-ORD-004": "重复出现的值只计一次"}
+}

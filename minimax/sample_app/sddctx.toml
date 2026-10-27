@@ -1,0 +1,10 @@
+# 作者：FDE WorkMate
+# sddctx 读取的业务工程布局：规格、代码、测试的位置与验证命令。
+
+[layout]
+specs = ["specs/**/*.md"]
+code = ["orders/**/*.py"]
+tests = ["tests/**/test_*.py"]
+
+[verify]
+command = ["python", "-m", "pytest", "-q"]
