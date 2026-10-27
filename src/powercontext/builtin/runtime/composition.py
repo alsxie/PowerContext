@@ -97,6 +97,7 @@ from powercontext.builtin.persistence.processing_migration import (
     bootstrap_processing_schema,
 )
 from powercontext.builtin.persistence.scope_search_schema import ensure_scope_search_schema
+from powercontext.builtin.persistence.seekdb.memory_index import SeekDBHybridMemoryIndex
 from powercontext.builtin.persistence.seekdb.profile import SeekDBConfig, SeekDBProfile
 from powercontext.builtin.persistence.skill_distribution_schema import ensure_skill_distribution_schema
 from powercontext.builtin.persistence.source_lifecycle import SourceLifecycleRepository
@@ -968,10 +969,7 @@ async def open_builtin_contexts(
                 await contexts.aclose_usage_recorder()
         return
     experience_index = OceanBaseExperienceFTSIndex()
-    indexes = [OceanBaseMemoryFTSIndex()]
-    if embedding_model is not None:
-        indexes.append(OceanBaseMemoryVectorIndex(embedding_model.profile))
-    index = CompositeMemoryIndex(*indexes)
+    index = _relational_memory_index(database, embedding_model)
     topic_indexes: list[TopicMemoryIndex] = [OceanBaseTopicMemoryFTSIndex()]
     if embedding_model is not None:
         topic_indexes.append(OceanBaseTopicMemoryVectorIndex(embedding_model.profile))
@@ -1043,6 +1041,18 @@ async def open_builtin_contexts(
             # Producers are stopped by now, and the profile below still owns the
             # database this recorder writes into.
             await contexts.aclose_usage_recorder()
+
+
+def _relational_memory_index(database: object, embedding_model: EmbeddingModel | None) -> MemoryIndex:
+    """OceanBase-family Memory index; seekdb runs hybrid candidates in one statement."""
+
+    fts_index = OceanBaseMemoryFTSIndex()
+    if embedding_model is None:
+        return CompositeMemoryIndex(fts_index)
+    vector_index = OceanBaseMemoryVectorIndex(embedding_model.profile)
+    if isinstance(database, SeekDBConfig):
+        return SeekDBHybridMemoryIndex(fts_index, vector_index)
+    return CompositeMemoryIndex(fts_index, vector_index)
 
 
 def _register_prompt_demonstrators(
