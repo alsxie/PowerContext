@@ -24,6 +24,7 @@ from typing import Any
 from pyobvector import VECTOR
 from sqlalchemy import TextClause, bindparam, text
 from sqlalchemy.ext.asyncio import AsyncConnection
+from typing_extensions import override
 
 from powercontext.builtin.artifacts.memory import (
     CapabilityNotSupportedError,
@@ -151,6 +152,7 @@ class SeekDBHybridMemoryIndex(CompositeMemoryIndex):
         self._statement = hybrid_candidate_statement(dimension, tagged=False)
         self._tagged_statement = hybrid_candidate_statement(dimension, tagged=True)
 
+    @override
     async def search(
         self,
         connection: AsyncConnection,

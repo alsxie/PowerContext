@@ -172,4 +172,4 @@ def test_registration_identity_events_and_scope_isolation() -> None:
         {"node_id": "x", "revision": 1, "sequence": 1, "available": 1, "reason": "x"},
     ):
         with pytest.raises(ValidationError):
-            SourceLifecycleEvent(**invalid)
+            SourceLifecycleEvent(**invalid)  # ty: ignore[invalid-argument-type]

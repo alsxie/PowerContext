@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -31,6 +32,7 @@ from powercontext.builtin.runtime import (
 )
 from powercontext.builtin.scope import ScopeDraft
 from powercontext.sources import SourceDefinitionRegistry, manifest_for_definition, project_source_for_transport
+from powercontext.sources.observations import SourceObservation
 from powercontext.sources.pi_session import (
     PI_EVENT_SOURCE_DEFINITION,
     PiEventInput,
@@ -43,12 +45,12 @@ from powercontext.sources.projections import TEXT_EVIDENCE_PROJECTION_KEY
 HEADER = {"type": "session", "version": 3, "id": "s"}
 
 
-def _raw(records: list[dict], *, header: dict | None = None, newline: str = "\n") -> bytes:
+def _raw(records: list[dict[str, Any]], *, header: dict[str, Any] | None = None, newline: str = "\n") -> bytes:
     lines = [json.dumps(record, ensure_ascii=False) for record in [header or HEADER, *records]]
     return (newline.join(lines) + newline).encode()
 
 
-def _user(node_id: str, parent: str | None, text: str) -> dict:
+def _user(node_id: str, parent: str | None, text: str) -> dict[str, Any]:
     return {"type": "message", "id": node_id, "parentId": parent, "message": {"role": "user", "content": text}}
 
 
@@ -82,7 +84,7 @@ def test_raw_separator_between_records_is_not_a_line_break() -> None:
         [_user("a", None, "x"), {"type": "session", "version": 3, "id": "s2", "parentId": "a"}],
     ],
 )
-def test_entries_must_declare_parent_and_header_is_unique(records: list[dict]) -> None:
+def test_entries_must_declare_parent_and_header_is_unique(records: list[dict[str, Any]]) -> None:
     with pytest.raises(ValueError):
         parse_pi_session(PiSessionInput(content=_raw(records)))
 
@@ -176,6 +178,7 @@ def test_two_million_character_tool_result_persists_through_runtime(tmp_path: Pa
         observations = [project_source_for_transport(registry, await registry.resolve(event)) for event in events]
         config = BuiltinConfig(database=SQLiteConfig(url=f"sqlite+aiosqlite:///{tmp_path / 'pi.db'}"))
         async with open_builtin_runtime(config) as runtime:
+            assert runtime.scopes is not None
             scope = await runtime.scopes.create(ScopeDraft(title="Pi", summary="Pi", idempotency_key="pi"))
             await runtime.ingestion.register(manifest_for_definition(PI_EVENT_SOURCE_DEFINITION))
             for observation in (*observations, observations[1]):
@@ -187,6 +190,7 @@ def test_two_million_character_tool_result_persists_through_runtime(tmp_path: Pa
         stored = {entry.source_ref.source_id: entry.source for entry in entries}
         assert stored == {observation.name: observation for observation in observations}
         big = stored[observations[1].name]
+        assert isinstance(big, SourceObservation)
         assert big.projection(TEXT_EVIDENCE_PROJECTION_KEY)["content"] == f"toolResult: [tool_result read c1] {text}"
         assert await registry.read(PiEventSource.model_validate(big.payload)) == events[1]
 

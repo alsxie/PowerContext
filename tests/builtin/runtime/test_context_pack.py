@@ -56,7 +56,7 @@ def test_chunks_are_bounded_valid_and_lossless(limit: int) -> None:
 @pytest.mark.parametrize("limit", [0, -1, True, 1.5])
 def test_chunk_limit_must_be_positive_int(limit: object) -> None:
     with pytest.raises(ContextPackError):
-        ContextPack.from_content("text", chunk_bytes=limit)  # type: ignore[arg-type]
+        ContextPack.from_content("text", chunk_bytes=limit)  # ty: ignore[invalid-argument-type]
 
 
 def test_empty_content_is_empty_pack() -> None:

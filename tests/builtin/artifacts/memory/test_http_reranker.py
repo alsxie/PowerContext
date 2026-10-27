@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from typing import Any
 
 import httpx
 import pytest
@@ -49,7 +50,7 @@ def _run(handler, candidates, limit, *, batch_size=32):
     return asyncio.run(scenario())
 
 
-def _scoring(scores: dict[int, float], calls: list[dict]):
+def _scoring(scores: dict[int, float], calls: list[dict[str, Any]]):
     def handler(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
         calls.append(body)
@@ -60,7 +61,7 @@ def _scoring(scores: dict[int, float], calls: list[dict]):
 
 
 def test_cross_batch_scores_are_selected_globally_with_rank_ties() -> None:
-    calls: list[dict] = []
+    calls: list[dict[str, Any]] = []
     scores = {1: 0.10, 2: 0.90, 3: 0.95, 4: 0.90, 5: 0.95}
     decision = _run(_scoring(scores, calls), tuple(_hit(i) for i in range(1, 6)), 4, batch_size=2)
     assert decision.selected_ranks == (3, 5, 2, 4)
@@ -73,7 +74,7 @@ def test_cross_batch_scores_are_selected_globally_with_rank_ties() -> None:
 
 @pytest.mark.parametrize(("count", "batch_size"), [(1, 1), (1, 32), (5, 1), (6, 3), (7, 3), (40, 32)])
 def test_usage_counts_requests_actually_sent(count: int, batch_size: int) -> None:
-    calls: list[dict] = []
+    calls: list[dict[str, Any]] = []
     scores = {rank: float(rank % 4) for rank in range(1, count + 1)}
     decision = _run(_scoring(scores, calls), tuple(_hit(i) for i in range(1, count + 1)), 1, batch_size=batch_size)
     assert decision.usage.requests == len(calls)
@@ -123,7 +124,7 @@ def test_rejects_invalid_configuration_and_limits() -> None:
             HTTPMemoryReranker("https://invalid", client=client, batch_size=batch_size)
     with pytest.raises(ValueError):
         HTTPMemoryReranker("", client=client)
-    calls: list[dict] = []
+    calls: list[dict[str, Any]] = []
     with pytest.raises(ValueError):
         _run(_scoring({1: 1.0}, calls), (_hit(1),), 0)
     assert calls == []

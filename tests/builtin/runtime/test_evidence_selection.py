@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -56,7 +57,7 @@ def _build(query: str, *hits: MemoryHit, max_bytes: int = 1400, scope_id: str = 
     )
 
 
-def _items(build: PreparedContextBuild) -> list[dict[str, object]]:
+def _items(build: PreparedContextBuild) -> list[dict[str, Any]]:
     assert build.context.content is not None
     return json.loads(build.context.content.splitlines()[-2])["items"]
 

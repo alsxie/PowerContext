@@ -35,7 +35,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Iterable, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import replace
-from typing import TYPE_CHECKING, Annotated, Any, Literal
+from typing import TYPE_CHECKING, Annotated, Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, ValidationError, field_validator
 
@@ -381,7 +381,7 @@ def _derivation(node_id: str, parents: object, policy: object) -> tuple[tuple[st
         raise SourceLifecycleError("parents must not repeat")  # noqa: TRY003
     if node_id in parent_ids:
         raise SourceLifecycleError("a node cannot depend on itself")  # noqa: TRY003
-    return parent_ids, policy  # type: ignore[return-value]
+    return parent_ids, cast("LifecyclePolicy", policy)
 
 
 def _by_id(nodes: Iterable[LifecycleNodeRecord]) -> dict[str, LifecycleNodeRecord]:

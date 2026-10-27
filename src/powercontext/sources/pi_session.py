@@ -147,9 +147,9 @@ def _text(content: object) -> str:
         return content
     if isinstance(content, list):
         return "\n".join(
-            block["text"]
+            text
             for block in content
-            if isinstance(block, dict) and block.get("type") == "text" and isinstance(block.get("text"), str)
+            if isinstance(block, dict) and block.get("type") == "text" and isinstance(text := block.get("text"), str)
         )
     return ""
 
@@ -158,9 +158,11 @@ def _visible(record: dict[str, JsonValue]) -> tuple[str, str] | None:  # noqa: C
     kind = record.get("type")
     if kind == "message":
         message = record.get("message")
-        if not isinstance(message, dict) or not isinstance(message.get("role"), str):
+        if not isinstance(message, dict):
             return None
-        role = message["role"]
+        role = message.get("role")
+        if not isinstance(role, str):
+            return None
         if role == "toolResult":
             body = (
                 f"[tool_result {message.get('toolName')} {message.get('toolCallId')}] {_text(message.get('content'))}"
@@ -185,7 +187,8 @@ def _visible(record: dict[str, JsonValue]) -> tuple[str, str] | None:  # noqa: C
                         parts.append(f"[tool_call {block.get('name')} {block.get('id')}] {arguments}")
             body = "\n".join(parts)
     elif kind in {"compaction", "branch_summary"}:
-        role, body = kind, record.get("summary") if isinstance(record.get("summary"), str) else ""
+        summary = record.get("summary")
+        role, body = str(kind), summary if isinstance(summary, str) else ""
     elif kind == "custom_message":
         role, body = "custom", _text(record.get("content"))
     else:

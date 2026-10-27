@@ -95,6 +95,7 @@ class _WindowLauncher:
                 expected_generation=None if stored is None else stored.generation,
             )
             row = await intents.load(connection, work.scope_id, BINDING, for_update=True)
+            assert row is not None
             await intents.acknowledge(
                 connection,
                 work.scope_id,
@@ -118,10 +119,10 @@ async def _settle(supervisor, seconds=0.2):
 def test_runtime_thresholds_are_strict_optional_positive_integers():
     for field in ("memory_source_count_threshold", "topic_memory_source_count_threshold"):
         assert getattr(RuntimeConfig(), field) is None
-        assert getattr(RuntimeConfig(**{field: 2}), field) == 2
+        assert getattr(RuntimeConfig(**{field: 2}), field) == 2  # ty: ignore[invalid-argument-type]
         for value in (True, 0, -1, 1.5, "3"):
             with pytest.raises(ValidationError):
-                RuntimeConfig(**{field: value})
+                RuntimeConfig(**{field: value})  # ty: ignore[invalid-argument-type]
 
 
 @pytest.mark.parametrize("value", [True, 0, -2, 1.0, "3"])

@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import asyncio
+import builtins
 import io
 import re
 import unicodedata
@@ -99,7 +100,7 @@ def test_long_document_id_still_fits_and_oversized_id_is_rejected() -> None:
 
 def _text_pdf(lines_per_page: list[list[bytes]], *, compress: bool = True) -> bytes:
     pypdf = pytest.importorskip("pypdf")
-    from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+    from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject  # ty: ignore[unresolved-import]
 
     writer = pypdf.PdfWriter()
     font = writer._add_object(
@@ -159,7 +160,7 @@ def test_damaged_content_streams_fail_atomically() -> None:
 class _FakeMemory:
     """The public scoped Memory surface used by ``search_pdf_pages``."""
 
-    def __init__(self, pages: list[tuple[str, str, int, str]]) -> None:
+    def __init__(self, pages: builtins.list[tuple[str, str, int, str]]) -> None:
         self.records = [
             SimpleNamespace(
                 entry=SimpleNamespace(

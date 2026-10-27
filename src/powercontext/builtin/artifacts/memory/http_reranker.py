@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import json
 import math
-from typing import Any
+from typing import Any, TypeGuard, cast
 
 import httpx
 
@@ -115,7 +115,8 @@ def _parse_scores(content: bytes, *, expected: frozenset[int]) -> dict[int, floa
 def _parse_record(record: object, *, expected: frozenset[int]) -> tuple[int, float | int]:
     if not isinstance(record, dict) or frozenset(record) != _SCORE_KEYS:
         raise ValueError("reranker score records must contain exactly 'rank' and 'score'")  # noqa: TRY003
-    rank, score = record["rank"], record["score"]
+    fields = cast("dict[str, object]", record)
+    rank, score = fields["rank"], fields["score"]
     if not _is_int(rank):
         raise ValueError("reranker score rank must be an integer")  # noqa: TRY003
     if rank not in expected:
@@ -134,11 +135,11 @@ def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def _is_int(value: object) -> bool:
+def _is_int(value: object) -> TypeGuard[int]:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
-def _is_finite_number(value: object) -> bool:
+def _is_finite_number(value: object) -> TypeGuard[int | float]:
     if isinstance(value, bool) or not isinstance(value, int | float):
         return False
     try:

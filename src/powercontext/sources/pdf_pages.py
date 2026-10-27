@@ -32,6 +32,7 @@ from typing import Any
 from urllib.parse import quote
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from typing_extensions import override
 
 from powercontext.artifacts import MemoryCitation
 from powercontext.limits import MAX_MEMORY_ENTRY_TEXT_BYTES, MAX_SOURCE_ID_LENGTH
@@ -244,6 +245,7 @@ class _ContentLossRecorder(logging.Handler):
         self.thread = threading.get_ident()
         self.messages: list[str] = []
 
+    @override
     def emit(self, record: logging.LogRecord) -> None:
         if record.thread == self.thread and _CONTENT_LOSS.search(record.getMessage()):
             self.messages.append(record.getMessage())
@@ -284,13 +286,14 @@ def _complete_flate(stream: Any) -> bool:
 def _require_contents(page: Any) -> None:
     # A declared content stream must resolve and decode completely; otherwise the
     # page would silently read as blank or partial.
-    from pypdf.generic import NullObject, StreamObject
+    # pypdf is provided by the deployment environment, not a declared dependency.
+    from pypdf.generic import NullObject, StreamObject  # ty: ignore[unresolved-import]
 
     contents = page.get("/Contents")
     if contents is None:
         return
     resolved = contents.get_object()
-    parts = list(resolved) if isinstance(resolved, list) else [contents]
+    parts: list[Any] = list(resolved) if isinstance(resolved, list) else [contents]
     for part in parts:
         stream = part.get_object()
         if stream is None or isinstance(stream, NullObject):
@@ -316,7 +319,7 @@ def parse_pdf_document(value: PDFDocumentInput) -> tuple[PDFPageInput, ...]:
         raise ValueError("PDF content is empty")  # noqa: TRY003
     digest = hashlib.sha256(content).hexdigest()
     try:
-        from pypdf import PasswordType, PdfReader
+        from pypdf import PasswordType, PdfReader  # ty: ignore[unresolved-import]
 
         with _record_content_loss() as recorder:
             reader = PdfReader(io.BytesIO(content))

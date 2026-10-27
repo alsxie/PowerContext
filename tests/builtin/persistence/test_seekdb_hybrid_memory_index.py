@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import pytest
 from sqlalchemy.dialects import mysql
@@ -87,7 +87,9 @@ def _row(channel: str, entry: str, *, score: float | None = None, distance: floa
     }
 
 
-def _request(mode: str = "hybrid", *, tag_filter: TagFilter | None = None, profile=PROFILE) -> MemorySearchRequest:
+def _request(
+    mode: Literal["fts", "vector", "hybrid"] = "hybrid", *, tag_filter: TagFilter | None = None, profile=PROFILE
+) -> MemorySearchRequest:
     return MemorySearchRequest(
         query="alpha beta",
         analyzed_query="alpha beta",
@@ -108,7 +110,7 @@ def _index(*, complete: bool = True) -> tuple[SeekDBHybridMemoryIndex, list[int]
         calls.append(1)
         return complete
 
-    vector.vector_complete = vector_complete  # type: ignore[method-assign]
+    vector.vector_complete = vector_complete  # ty: ignore[invalid-assignment]
     return SeekDBHybridMemoryIndex(OceanBaseMemoryFTSIndex(), vector), calls
 
 
@@ -218,7 +220,7 @@ def test_hybrid_search_rejects_incomplete_vectors_and_profile_mismatch() -> None
 
 
 @pytest.mark.parametrize("mode", ["fts", "vector"])
-def test_single_channel_modes_delegate_to_frozen_indexes(mode: str) -> None:
+def test_single_channel_modes_delegate_to_frozen_indexes(mode: Literal["fts", "vector"]) -> None:
     index, _ = _index()
     connection = _FakeConnection([])
     asyncio.run(index.search(cast(AsyncConnection, connection), "scope-a", _request(mode)))
