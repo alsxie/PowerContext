@@ -81,7 +81,6 @@ class CoalescingEmbeddingModel:
         if isinstance(cache_size, bool) or not isinstance(cache_size, int) or cache_size < 0:
             raise ValueError("cache_size must be a non-negative integer")  # noqa: TRY003
         self._model = model
-        self.profile: EmbeddingProfile = model.profile
         self._max_batch_size = max_batch_size
         self._coalesce_seconds = float(coalesce_ms) / 1000.0
         self._cache_size = cache_size
@@ -97,6 +96,12 @@ class CoalescingEmbeddingModel:
         """Return the wrapped provider model."""
 
         return self._model
+
+    @property
+    def profile(self) -> EmbeddingProfile:
+        """Return the wrapped provider's current embedding profile."""
+
+        return self._model.profile
 
     async def embed(self, texts: tuple[str, ...], /) -> EmbeddingResult:
         """Return one vector per input text in input order, sharing provider work."""
@@ -172,36 +177,52 @@ class CoalescingEmbeddingModel:
             return
         task = asyncio.ensure_future(self._run(batch))
         self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
+        task.add_done_callback(self._task_done)
+
+    def _task_done(self, task: asyncio.Task[None]) -> None:
+        self._tasks.discard(task)
+        # Waiters receive any failure through the batch future; retrieve it here so a
+        # re-raised non-``Exception`` failure does not also log "never retrieved".
+        if not task.cancelled():
+            task.exception()
 
     async def _run(self, batch: _Batch) -> None:
         texts = tuple(batch.texts)
         try:
-            if batch.namespace == "query" and isinstance(self._model, QueryEmbeddingModel):
-                result = await self._model.embed_query(texts)
-            else:
-                result = await self._model.embed(texts)
-            vectors = tuple(result.vectors)
-            if len(vectors) != len(texts):
-                raise ValueError(  # noqa: TRY003, TRY301
-                    f"embedding model returned {len(vectors)} vectors for {len(texts)} texts"
-                )
+            vectors, usage = await self._compute(batch.namespace, texts)
         except asyncio.CancelledError:
             self._release(batch)
             batch.future.cancel()
             raise
-        except Exception as error:
+        except BaseException as error:
             self._release(batch)
             if not batch.future.done():
                 batch.future.set_exception(error)
-            return
+            if isinstance(error, Exception):
+                return
+            # GeneratorExit, KeyboardInterrupt, SystemExit, ...: waiters are released, then re-raise.
+            raise
         mapping = dict(zip(texts, vectors, strict=True))
         if self._cache_size > 0:
             for text, vector in mapping.items():
                 self._store((batch.namespace, text), vector)
         self._release(batch)
         if not batch.future.done():
-            batch.future.set_result((mapping, result.usage))
+            batch.future.set_result((mapping, usage))
+
+    async def _compute(
+        self, namespace: _Namespace, texts: tuple[str, ...]
+    ) -> tuple[tuple[EmbeddingVector, ...], InferenceUsage]:
+        if namespace == "query" and isinstance(self._model, QueryEmbeddingModel):
+            result = await self._model.embed_query(texts)
+        else:
+            result = await self._model.embed(texts)
+        vectors = tuple(result.vectors)
+        if len(vectors) != len(texts):
+            raise ValueError(  # noqa: TRY003
+                f"embedding model returned {len(vectors)} vectors for {len(texts)} texts"
+            )
+        return vectors, result.usage
 
     def _release(self, batch: _Batch) -> None:
         for text in batch.texts:

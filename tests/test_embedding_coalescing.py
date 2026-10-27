@@ -100,6 +100,52 @@ def test_cancel_during_window_keeps_other_waiter() -> None:
     asyncio.run(scenario())
 
 
+class _ProviderAbort(BaseException):
+    """A non-``Exception`` failure raised by a provider."""
+
+
+@pytest.mark.parametrize("error_type", [GeneratorExit, _ProviderAbort])
+def test_base_exception_releases_waiters_without_caching(error_type: type[BaseException]) -> None:
+    class Aborting(Gated):
+        async def embed(self, texts: tuple[str, ...]) -> EmbeddingResult:
+            if "bad" in texts:
+                self.calls.append(texts)
+                raise error_type
+            return await super().embed(texts)
+
+    async def scenario() -> None:
+        base = Aborting()
+        base.release.set()
+        model = CoalescingEmbeddingModel(base, max_batch_size=1, coalesce_ms=0)
+        first = asyncio.create_task(model.embed(("ok", "bad")))
+        shared = asyncio.create_task(model.embed(("bad",)))
+        good = asyncio.create_task(model.embed(("ok",)))
+        _, pending = await asyncio.wait({first, shared, good}, timeout=1.0)
+        assert not pending
+        for task in (first, shared):
+            assert isinstance(task.exception(), error_type)
+        assert good.result().vectors == ((2.0,),)
+        assert base.calls == [("ok",), ("bad",)]
+        assert model._inflight == {}
+        assert not model._tasks
+        retry = asyncio.create_task(model.embed(("bad",)))
+        _, pending = await asyncio.wait({retry}, timeout=1.0)
+        assert not pending
+        assert isinstance(retry.exception(), error_type)
+        assert base.calls == [("ok",), ("bad",), ("bad",)]
+
+    asyncio.run(scenario())
+
+
+def test_profile_tracks_wrapped_model() -> None:
+    base = Gated()
+    model = CoalescingEmbeddingModel(base)
+    assert model.profile == Gated.profile
+    replacement = EmbeddingProfile(profile_id="coalescing-tests-v2", model="local", dimension=1)
+    base.profile = replacement
+    assert model.profile == replacement
+
+
 def test_rejects_invalid_configuration() -> None:
     with pytest.raises(ValueError):
         CoalescingEmbeddingModel(Gated(), max_batch_size=0)
