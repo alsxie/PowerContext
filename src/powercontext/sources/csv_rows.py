@@ -30,6 +30,7 @@ from powercontext.sources.definitions import AdapterSourceDefinition
 from powercontext.sources.models import Source, SourceMaterialization
 from powercontext.sources.projections import TEXT_EVIDENCE_PROJECTION_KEY, TextEvidence
 
+#: Source Definition name of one captured CSV row.
 CSV_ROW_SOURCE_NAME = "csv-row"
 
 
@@ -39,6 +40,12 @@ def _require_document_id(value: str) -> None:
 
 
 def csv_row_source_id(document_id: str, primary_key_value: str) -> str:
+    """Return the stable Source name ``csv:<document_id>:<primary_key_value>`` of one row.
+
+    Both parts are percent-encoded without safe characters, so the name is injective.
+    Raises ``ValueError`` for an invalid document id, a blank key value, or a name
+    longer than the Source identity limit.
+    """
     _require_document_id(document_id)
     if not primary_key_value or not primary_key_value.strip():
         raise ValueError("primary key value must not be blank")  # noqa: TRY003
@@ -49,6 +56,8 @@ def csv_row_source_id(document_id: str, primary_key_value: str) -> str:
 
 
 class CSVDocumentInput(BaseModel):
+    """Raw UTF-8 CSV bytes with the header column that identifies each row."""
+
     model_config = ConfigDict(frozen=True)
     document_id: str
     primary_key: str
@@ -56,6 +65,8 @@ class CSVDocumentInput(BaseModel):
 
 
 class CSVRowInput(BaseModel):
+    """One CSV record aligned with its header and identified by its primary-key value."""
+
     model_config = ConfigDict(frozen=True)
     document_id: str
     primary_key: str
@@ -77,6 +88,8 @@ class CSVRowInput(BaseModel):
 
 
 class CSVRowSource(Source):
+    """Captured CSV row whose name is always ``csv_row_source_id`` of its identity fields."""
+
     source_id: str
     document_id: str
     primary_key: str
@@ -92,6 +105,13 @@ class CSVRowSource(Source):
 
 
 def parse_csv_document(value: CSVDocumentInput) -> tuple[CSVRowInput, ...]:  # noqa: C901
+    """Split a complete CSV document into row inputs, failing atomically.
+
+    The header must contain unique non-blank columns including ``primary_key``;
+    blank records are skipped, and every other record must match the header width
+    and carry a non-blank, unique key value. Any violation, invalid UTF-8 or
+    malformed quoting raises ``ValueError`` and no rows are returned.
+    """
     _require_document_id(value.document_id)
     if not value.primary_key:
         raise ValueError("primary_key must be non-empty")  # noqa: TRY003
@@ -135,6 +155,8 @@ def parse_csv_document(value: CSVDocumentInput) -> tuple[CSVRowInput, ...]:  # n
 
 
 class CSVRowSourceAdapter:
+    """Resolve CSV row inputs to captured Sources and read them back unchanged."""
+
     input_class = CSVRowInput
     name = CSV_ROW_SOURCE_NAME
     source_class = CSVRowSource
@@ -163,6 +185,8 @@ class CSVRowSourceAdapter:
 
 
 class CSVRowTextEvidenceProjection:
+    """Project a CSV row to compact JSON text evidence with its identity metadata."""
+
     name = TEXT_EVIDENCE_PROJECTION_KEY.name
     version = TEXT_EVIDENCE_PROJECTION_KEY.version
     source_class = CSVRowSource
@@ -184,6 +208,7 @@ class CSVRowTextEvidenceProjection:
         )
 
 
+#: Source Definition for captured CSV rows with a text-evidence projection.
 CSV_ROW_SOURCE_DEFINITION = AdapterSourceDefinition(
     CSVRowSourceAdapter(),
     version="1",

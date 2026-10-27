@@ -32,18 +32,24 @@ from powercontext.sources.definitions import AdapterSourceDefinition
 from powercontext.sources.models import Source, SourceMaterialization
 from powercontext.sources.projections import TEXT_EVIDENCE_PROJECTION_KEY, TextEvidence
 
+#: Source Definition name of one captured Pi session event.
 PI_EVENT_SOURCE_NAME = "pi-event"
+#: Connector name that imports one Pi session branch.
 PI_SESSION_CONNECTOR_NAME = "pi-session-history"
 _CHECKPOINT_SCHEMA = "powercontext.pi-session-history.v1"
 
 
 class PiSessionInput(BaseModel):
+    """Raw Pi v3 JSONL session bytes and the optional leaf whose branch is imported."""
+
     model_config = ConfigDict(frozen=True)
     content: bytes
     leaf_id: str | None = None
 
 
 class PiEventInput(BaseModel):
+    """One visible Pi event of a branch, with its original JSON record and rendered text."""
+
     model_config = ConfigDict(frozen=True)
     session_id: str
     event_id: str
@@ -71,6 +77,11 @@ class PiEventSource(Source):
 
 
 def pi_event_source_id(session_id: str, event_id: str) -> str:
+    """Return the stable Source name of one Pi event.
+
+    The readable ``pi:<session_id>:<event_id>`` form is percent-encoded; names over the
+    Source identity limit fall back to ``pi-h:<sha256>`` of both identifiers.
+    """
     direct = f"pi:{quote(session_id, safe='')}:{quote(event_id, safe='')}"
     if len(direct) <= MAX_SOURCE_ID_LENGTH:
         return direct
@@ -221,12 +232,20 @@ def _event(session_id: str, record: dict[str, JsonValue]) -> PiEventInput | None
 
 
 def parse_pi_session(value: PiSessionInput) -> tuple[PiEventInput, ...]:
+    """Return the visible events on the branch ending at ``leaf_id`` (default: last entry).
+
+    The whole session is validated first: UTF-8 JSONL objects, one v3 session header,
+    unique entry ids and parents that reference earlier entries. Any violation or an
+    unknown leaf raises ``ValueError`` and no events are returned.
+    """
     session_id, nodes, order = _load(value.content)
     events = (_event(session_id, nodes[node_id]) for node_id in _branch(nodes, order, value.leaf_id))
     return tuple(event for event in events if event is not None)
 
 
 class PiEventSourceAdapter:
+    """Resolve Pi event inputs to captured Sources and read them back unchanged."""
+
     input_class = PiEventInput
     name = PI_EVENT_SOURCE_NAME
     source_class = PiEventSource
@@ -257,6 +276,8 @@ def _source_content(source: PiEventSource) -> str:
 
 
 class PiEventTextEvidenceProjection:
+    """Project a Pi event to ``role: text`` evidence with its branch identity metadata."""
+
     name = TEXT_EVIDENCE_PROJECTION_KEY.name
     version = TEXT_EVIDENCE_PROJECTION_KEY.version
     source_class = PiEventSource
@@ -277,6 +298,7 @@ class PiEventTextEvidenceProjection:
         )
 
 
+#: Source Definition for captured Pi events with a text-evidence projection.
 PI_EVENT_SOURCE_DEFINITION = AdapterSourceDefinition(
     PiEventSourceAdapter(), version="1", projections=(PiEventTextEvidenceProjection(),)
 )
@@ -301,6 +323,13 @@ def _imported(checkpoint: JsonValue | None) -> dict[str, str]:
 
 
 class PiSessionConnector:
+    """Import the visible events of one Pi session file branch idempotently.
+
+    The checkpoint records the digest of every imported event; a later run submits
+    only new branch events and fails before submitting anything if an imported
+    record was rewritten.
+    """
+
     name = PI_SESSION_CONNECTOR_NAME
     version = "1"
     source_definitions = frozenset({PI_EVENT_SOURCE_NAME})

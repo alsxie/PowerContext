@@ -40,6 +40,7 @@ from powercontext.sources.models import Source, SourceMaterialization
 from powercontext.sources.page_retrieval import rank_pages
 from powercontext.sources.projections import TEXT_EVIDENCE_PROJECTION_KEY, TextEvidence
 
+#: Source Definition name of one captured physical PDF page.
 PDF_PAGE_SOURCE_NAME = "pdf-page"
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _FTS_POOL = 100
@@ -79,6 +80,8 @@ def _page_location_key(source_id: str) -> str:
 
 
 class PDFDocumentInput(BaseModel):
+    """Complete PDF bytes and the caller's identifier for the document."""
+
     model_config = ConfigDict(frozen=True)
     document_id: str
     content: bytes
@@ -90,6 +93,8 @@ class PDFDocumentInput(BaseModel):
 
 
 class PDFPageInput(BaseModel):
+    """Extracted text of one physical page of one PDF revision."""
+
     model_config = ConfigDict(frozen=True)
     document_id: str
     document_sha256: str
@@ -108,6 +113,8 @@ class PDFPageInput(BaseModel):
 
 
 class PDFPageSource(Source):
+    """Captured PDF page whose name is always ``pdf_page_source_id`` of its identity fields."""
+
     document_id: str
     document_sha256: str
     page_number: int = Field(ge=1)
@@ -336,6 +343,8 @@ def parse_pdf_document(value: PDFDocumentInput) -> tuple[PDFPageInput, ...]:
 
 
 class PDFPageSourceAdapter:
+    """Resolve PDF page inputs to captured Sources and read them back unchanged."""
+
     input_class = PDFPageInput
     name = PDF_PAGE_SOURCE_NAME
     source_class = PDFPageSource
@@ -360,6 +369,8 @@ class PDFPageSourceAdapter:
 
 
 class PDFPageTextEvidenceProjection:
+    """Project a PDF page to ``DOCUMENT_ID\\nPAGE_TEXT`` evidence with its page identity."""
+
     name = TEXT_EVIDENCE_PROJECTION_KEY.name
     version = TEXT_EVIDENCE_PROJECTION_KEY.version
     source_class = PDFPageSource
@@ -378,6 +389,7 @@ class PDFPageTextEvidenceProjection:
         )
 
 
+#: Source Definition for captured PDF pages with a text-evidence projection.
 PDF_PAGE_SOURCE_DEFINITION = AdapterSourceDefinition(
     PDFPageSourceAdapter(),
     version="1",
