@@ -55,13 +55,19 @@ class PiEventInput(BaseModel):
 
 
 class PiEventSource(Source):
+    """Captured Pi event; the event text is derived from ``record`` instead of stored twice.
+
+    ``content`` is only kept when an input's text differs from the text derived from its record,
+    so large tool results are not duplicated inside the persisted Source payload.
+    """
+
     session_id: str
     event_id: str
     parent_id: str | None
     event_type: str
     role: str
-    content: str
     record: dict[str, JsonValue]
+    content: str | None = None
 
 
 def pi_event_source_id(session_id: str, event_id: str) -> str:
@@ -72,19 +78,27 @@ def pi_event_source_id(session_id: str, event_id: str) -> str:
     return f"pi-h:{digest}"
 
 
+def _reject_constant(value: str) -> None:
+    raise ValueError(f"Pi session line contains non-standard JSON constant {value}")  # noqa: TRY003
+
+
 def _load(content: bytes) -> tuple[str, dict[str, dict[str, JsonValue]], list[str]]:  # noqa: C901
     try:
         text = content.decode("utf-8-sig")
     except UnicodeDecodeError as error:
         raise ValueError("Pi session must be UTF-8") from error  # noqa: TRY003
     records = []
-    for line in text.splitlines():
-        if not line.strip():
+    # JSONL lines end only at "\n"; str.splitlines() would also split on U+2028, U+2029, U+0085 and
+    # other characters that JSON writers emit verbatim inside string values.
+    for line in text.split("\n"):
+        if not line.strip(" \t\r"):
             continue
         try:
-            record = json.loads(line)
+            record = json.loads(line, parse_constant=_reject_constant)
         except json.JSONDecodeError as error:
             raise ValueError("Pi session line is not JSON") from error  # noqa: TRY003
+        except RecursionError as error:
+            raise ValueError("Pi session line is nested too deeply") from error  # noqa: TRY003
         if not isinstance(record, dict):
             raise ValueError("Pi session line must be a JSON object")  # noqa: TRY003, TRY004
         records.append(record)
@@ -97,13 +111,17 @@ def _load(content: bytes) -> tuple[str, dict[str, dict[str, JsonValue]], list[st
         or type(header.get("version")) is not int
         or header["version"] != 3
         or not isinstance(session_id, str)
-        or not session_id
+        or not session_id.strip()
     ):
         raise ValueError("Pi session header must be type=session version=3 with an id")  # noqa: TRY003
     nodes: dict[str, dict[str, JsonValue]] = {}
     order: list[str] = []
     for record in records[1:]:
-        node_id, parent = record.get("id"), record.get("parentId")
+        if record.get("type") == "session":
+            raise ValueError("Pi session must contain exactly one session header")  # noqa: TRY003
+        if "parentId" not in record:
+            raise ValueError("Pi entry must declare parentId")  # noqa: TRY003
+        node_id, parent = record.get("id"), record["parentId"]
         if not isinstance(node_id, str) or not node_id or node_id in nodes:
             raise ValueError("Pi entry ids must be unique non-empty strings")  # noqa: TRY003
         if parent is not None and (not isinstance(parent, str) or parent not in nodes):
@@ -181,6 +199,11 @@ def _branch(nodes: dict[str, dict[str, JsonValue]], order: list[str], leaf_id: s
     return chain[::-1]
 
 
+def _content(record: dict[str, JsonValue]) -> str | None:
+    visible = _visible(record)
+    return None if visible is None else f"{visible[0]}: {visible[1]}"
+
+
 def _event(session_id: str, record: dict[str, JsonValue]) -> PiEventInput | None:
     visible = _visible(record)
     if visible is None:
@@ -209,14 +232,28 @@ class PiEventSourceAdapter:
     source_class = PiEventSource
 
     async def resolve(self, value: PiEventInput, /) -> PiEventSource:
+        fields = value.model_dump()
+        if fields["content"] == _content(value.record):
+            fields["content"] = None
         return PiEventSource(
             name=pi_event_source_id(value.session_id, value.event_id),
             materialization=SourceMaterialization.CAPTURED,
-            **value.model_dump(),
+            **fields,
         )
 
     async def read(self, source: PiEventSource, /) -> PiEventInput:
-        return PiEventInput.model_validate(source.model_dump(include=set(PiEventInput.model_fields)))
+        fields = source.model_dump(include=set(PiEventInput.model_fields))
+        fields["content"] = _source_content(source)
+        return PiEventInput.model_validate(fields)
+
+
+def _source_content(source: PiEventSource) -> str:
+    if source.content is not None:
+        return source.content
+    derived = _content(source.record)
+    if derived is None:
+        raise ValueError("Pi event Source record has no visible content")  # noqa: TRY003
+    return derived
 
 
 class PiEventTextEvidenceProjection:
@@ -229,7 +266,7 @@ class PiEventTextEvidenceProjection:
         return TextEvidence(
             source_type=PI_EVENT_SOURCE_NAME,
             source_id=source.name,
-            content=source.content,
+            content=_source_content(source),
             metadata={
                 "session_id": source.session_id,
                 "event_id": source.event_id,
