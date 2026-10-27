@@ -176,3 +176,87 @@ def test_segments_keep_decimals_and_split_cjk() -> None:
     text = "Width was 1.0-1.6 kb (P<0.05). Next sentence here.\u6d4b\u8bd5\u3002\u7ed3\u675f"
     pieces = [text[start:end] for start, end in split_segments(text)]
     assert pieces == ["Width was 1.0-1.6 kb (P<0.05).", "Next sentence here.\u6d4b\u8bd5\u3002", "\u7ed3\u675f"]
+
+
+# The cases below are regression probes from the context-01 audit.
+
+MIXED_TEXTS = (
+    "\u6d77\u6d0b\u89c2\u6d4b station \U0001f600 records temperature anomalies. " * 30
+    + "The cobalt sensor reads 37 degrees.",
+    "Identical shared text about cobalt sensors and 37 degrees.",
+    'Line\u2028separator cobalt\u2029para \x85 next\nnewline "quote" \\ cobalt',
+)
+
+
+def _mixed_hits() -> tuple[MemoryHit, ...]:
+    return tuple(_hit(f"mixed-{number}", text) for number, text in enumerate(MIXED_TEXTS))
+
+
+@pytest.mark.parametrize("max_bytes", range(512, 4200, 37))
+def test_budget_sweep_counts_exact_bytes_and_keeps_the_envelope(max_bytes: int) -> None:
+    hits = _mixed_hits()
+    build = _build("cobalt sensor 37 \u6d77\u6d0b", *hits, max_bytes=max_bytes)
+    _assert_consistent(build, hits, max_bytes)
+    if build.context.content is None:
+        assert build.context.status == "empty" and build.context.content_bytes == 0
+        return
+    lines = build.context.content.splitlines()
+    assert lines[-3] == "BEGIN_POWERCONTEXT_PREPARED_CONTEXT_V1"
+    assert lines[-1] == "END_POWERCONTEXT_PREPARED_CONTEXT_V1"
+    assert json.loads(lines[-2])["trust"] == "untrusted_history"
+
+
+def test_selection_is_deterministic() -> None:
+    hits = _mixed_hits()
+    first = _build("cobalt sensor 37", *hits, max_bytes=1400)
+    second = _build("cobalt sensor 37", *hits, max_bytes=1400)
+    assert first == second
+    assert first.fragments
+
+
+def test_no_candidates_return_an_empty_context() -> None:
+    build = PreparedContextBuilder().build_scopes_result(
+        request=PrepareContextRequest(query="cobalt", max_bytes=1400, evidence_selection=True),
+        current_scope_id="scope-a",
+        memory_candidates=(),
+    )
+    assert build.context.status == "empty"
+    assert build.context.content is None and build.context.content_bytes == 0
+    assert build.fragments == () and build.origins == ()
+
+
+def test_stopword_only_query_still_returns_consistent_literal_fragments() -> None:
+    hits = _mixed_hits()
+    build = _build("the of and", *hits, max_bytes=1400)
+    _assert_consistent(build, hits, 1400)
+
+
+def test_identical_text_in_two_scopes_keeps_each_scope_identity() -> None:
+    text = "Identical shared text about cobalt sensors and 37 degrees."
+    build = PreparedContextBuilder().build_scopes_result(
+        request=PrepareContextRequest(query="cobalt sensor 37", max_bytes=4000, evidence_selection=True),
+        current_scope_id="scope-a",
+        memory_candidates=(
+            PreparedMemoryCandidates(scope_id="scope-a", memory_ref=MEMORY_REF, hits=(_hit("a-doc", text),)),
+            PreparedMemoryCandidates(scope_id="scope-b", memory_ref=MEMORY_REF, hits=(_hit("b-doc", text),)),
+        ),
+    )
+    owners = {fragment.address.memory.scope_id: fragment.address.entry_id for fragment in build.fragments}
+    assert owners == {"scope-a": "a-doc", "scope-b": "b-doc"}
+    for fragment in build.fragments:
+        assert fragment.text == text[fragment.start : fragment.end]
+
+
+def test_leading_document_keeps_contiguous_evidence_over_a_weaker_runner_up() -> None:
+    # Evidence often spans adjacent sentences: the leading document is covered as one contiguous
+    # fragment before any leftover bytes reach a weaker document.
+    lead = "Zinc supplements were studied. " + " ".join(
+        f"Zinc supplement trial {number} reduced cold duration by {number} days." for number in range(1, 9)
+    )
+    other = "Iron supplements were studied. " + "Iron supplement intake was recorded for adults. " * 8
+    hits = (_hit("lead", lead), _hit("other", other))
+    build = _build("zinc supplement reduced cold duration", *hits, max_bytes=1400)
+    _assert_consistent(build, hits, 1400)
+    first = build.fragments[0]
+    assert (first.address.entry_id, first.start, first.end) == ("lead", 0, len(lead))
+    assert sum(fragment.address.entry_id == "lead" for fragment in build.fragments) == 1
