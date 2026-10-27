@@ -1,0 +1,45 @@
+# 作者：FDE WorkMate
+# PowerContext Server（嵌入式 seekdb）。加入 Dify 的 docker 网络，Dify 经 ssrf_proxy 以 http://powercontext:8000 访问。
+name: grudge-tavern
+
+services:
+  powercontext:
+    build:
+      context: .
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        POWERCONTEXT_VERSION: ${POWERCONTEXT_VERSION:-1.4.1}
+    image: grudge-tavern/powercontext:${POWERCONTEXT_VERSION:-1.4.1}
+    container_name: grudge-tavern-powercontext
+    restart: unless-stopped
+    env_file:
+      - path: ./powercontext.env
+        required: true
+    environment:
+      POWERCONTEXT_SERVER_HTTP_HOST: 0.0.0.0
+      POWERCONTEXT_SERVER_HTTP_PORT: 8000
+      POWERCONTEXT_SERVER_DATABASE_KIND: seekdb
+      POWERCONTEXT_SERVER_DATABASE_PATH: /data/seekdb
+    volumes:
+      - powercontext-data:/data
+    ports:
+      # 仅供宿主机上的初始化/重置/验证脚本使用；Dify 走容器网络，不经过该端口。
+      - "127.0.0.1:${POWERCONTEXT_HOST_PORT:-18765}:8000"
+    networks:
+      dify:
+        aliases:
+          - powercontext
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=5)"]
+      interval: 15s
+      timeout: 6s
+      retries: 10
+      start_period: 180s
+
+volumes:
+  powercontext-data:
+
+networks:
+  dify:
+    external: true
+    name: ${DIFY_DOCKER_NETWORK:-docker_default}

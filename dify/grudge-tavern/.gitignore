@@ -1,0 +1,5 @@
+# 作者：FDE WorkMate
+powercontext/powercontext.env
+.env
+*.local
+__pycache__/

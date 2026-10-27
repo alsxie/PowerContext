@@ -1,0 +1,9 @@
+# 作者：FDE WorkMate
+# 叠加到 Dify 官方 docker/ 目录：把默认发布到 0.0.0.0 的调试端口收回到本机回环地址。
+services:
+  seekdb:
+    ports: !override
+      - "127.0.0.1:12882:2881"
+  plugin_daemon:
+    ports: !override
+      - "127.0.0.1:15003:5003"

@@ -1,0 +1,6 @@
+{
+  "check": "PowerContext 停机时 Chatflow 降级",
+  "passed": true,
+  "conversation_id": "1b21b3a1-3dd0-465c-a3be-86c51c53ca86",
+  "answer": "喊两声，渴成这样了？（把杯子往柜台上一搁）麦酒给你满上，桌子也顺手擦擦，杯子自己收。敢把麦渣留杯底，这笔我可记下——先记你的鞋印，跑不了。\n\n---\n【小本本】PowerContext 暂时连不上，本轮没有记账。"
+}
