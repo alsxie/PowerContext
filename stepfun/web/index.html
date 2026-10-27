@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="author" content="FDE WorkMate" />
+    <title>端侧知识库 · seekdb 混合检索</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div>
+        <h1>端侧知识库</h1>
+        <p class="sub">浏览器本地向量化 · seekdb 向量 + 全文混合检索</p>
+      </div>
+      <div class="backend" id="backend" role="status" aria-live="polite">
+        <span class="badge" id="backend-badge">未加载</span>
+        <span id="backend-detail" class="muted"></span>
+      </div>
+    </header>
+
+    <main class="grid">
+      <section class="card" aria-labelledby="h-model">
+        <h2 id="h-model">模型与推理后端</h2>
+        <div class="row">
+          <label>精度
+            <select id="dtype">
+              <option value="fp16">FP16（WebGPU 推荐）</option>
+              <option value="wq8">INT8 权重量化（MatMulNBits）</option>
+              <option value="int8">INT8 动态量化（WASM 推荐）</option>
+              <option value="fp32">FP32（基线）</option>
+            </select>
+          </label>
+          <label>后端
+            <select id="backend-pref">
+              <option value="auto">自动（WebGPU 优先）</option>
+              <option value="webgpu">仅 WebGPU</option>
+              <option value="wasm">强制 WASM</option>
+            </select>
+          </label>
+          <label>批大小 <input id="batch" type="number" min="1" max="256" value="32" /></label>
+          <button id="load">加载模型</button>
+        </div>
+        <div class="progress" aria-hidden="true"><div id="load-bar"></div></div>
+        <p id="model-info" class="muted"></p>
+      </section>
+
+      <section class="card" aria-labelledby="h-kb">
+        <h2 id="h-kb">知识库</h2>
+        <div class="row">
+          <label>当前知识库 <select id="kb-select"></select></label>
+          <input id="kb-name" placeholder="新知识库名，如 notes" aria-label="新知识库名" />
+          <button id="kb-create">新建</button>
+          <button id="kb-delete" class="danger">删除当前</button>
+        </div>
+        <p id="kb-info" class="muted"></p>
+        <details>
+          <summary>导入批次</summary>
+          <table class="tbl" id="batch-table"><thead><tr><th>批次</th><th>标签</th><th>状态</th><th>chunk</th><th>写入 ms</th><th>刷新 ms</th><th>可见校验 ms</th></tr></thead><tbody></tbody></table>
+        </details>
+      </section>
+
+      <section class="card" aria-labelledby="h-import">
+        <h2 id="h-import">导入文档</h2>
+        <div class="row">
+          <label class="file">选择文件（.txt / .md / .jsonl）<input id="files" type="file" multiple accept=".txt,.md,.markdown,.jsonl,text/plain" /></label>
+          <button id="import-files">导入所选文件</button>
+        </div>
+        <label for="paste" class="block">或粘贴文本（每个空行分隔的段落视为一篇文档）</label>
+        <textarea id="paste" rows="4" placeholder="在这里粘贴文本…"></textarea>
+        <div class="row">
+          <button id="import-paste">导入粘贴内容</button>
+          <span class="muted">示例语料（mMARCO 中文 2000 段）：</span>
+          <button id="import-demo-1">批次 1（1500 段）</button>
+          <button id="import-demo-2">批次 2（500 段）</button>
+        </div>
+        <div class="progress" aria-hidden="true"><div id="import-bar"></div></div>
+        <p id="import-status" class="muted" role="status" aria-live="polite"></p>
+      </section>
+
+      <section class="card wide" aria-labelledby="h-search">
+        <h2 id="h-search">检索</h2>
+        <form id="search-form" class="row">
+          <input id="q" type="search" placeholder="输入问题，例如：雄激素受体是什么" aria-label="查询" required />
+          <label>模式
+            <select id="mode">
+              <option value="hybrid">混合（seekdb RRF）</option>
+              <option value="vector">仅向量</option>
+              <option value="fulltext">仅全文</option>
+            </select>
+          </label>
+          <label>Top-K <input id="k" type="number" min="1" max="50" value="10" /></label>
+          <label class="check"><input id="explain" type="checkbox" /> 显示数据库生成的 SQL</label>
+          <button type="submit">检索</button>
+        </form>
+        <p id="search-timing" class="muted" role="status" aria-live="polite"></p>
+        <pre id="sql" class="sql" hidden></pre>
+        <ol id="results" class="results"></ol>
+      </section>
+    </main>
+    <footer class="foot">作者：FDE WorkMate · 推理全部在本机浏览器内完成，服务端只负责 seekdb 存储与检索 · <a href="./bench.html">基准测试页</a></footer>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,21 @@
+# 作者：FDE WorkMate
+# 离线工具链：模型获取、INT8/FP16 量化、评测数据集构建。Web 应用本身不依赖 Python。
+[project]
+name = "stepfun-edge-kb-tools"
+version = "1.0.0"
+requires-python = ">=3.12"
+dependencies = [
+  "onnx==1.23.2",
+  "onnxruntime==1.31.1",
+  "onnx-ir==1.1.0",
+  "pyarrow==26.0.0",
+  "numpy==2.5.4",
+  "tokenizers==0.23.3",
+]
+
+[tool.uv]
+package = false
+
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true

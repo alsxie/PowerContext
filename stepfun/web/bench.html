@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="author" content="FDE WorkMate" />
+    <title>基准测试 · 端侧知识库</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div>
+        <h1>基准测试</h1>
+        <p class="sub">与应用页使用同一套导入/检索流水线；参数通过 URL 传入，结果写入 bench/results/</p>
+      </div>
+      <div class="backend" role="status" aria-live="polite">
+        <span class="badge" id="backend-badge">未加载</span>
+        <span id="backend-detail" class="muted"></span>
+      </div>
+    </header>
+    <main class="grid">
+      <section class="card wide">
+        <p class="muted">示例：<code>bench.html?dtype=int8&amp;backend=auto&amp;batch=32&amp;runs=3</code>；基线：<code>?dtype=fp32&amp;batch=1&amp;send=16&amp;pipelined=0&amp;commitPerSend=1&amp;sort=0&amp;writeMode=upsert</code></p>
+        <button id="start">开始</button>
+        <pre id="log" class="sql" aria-live="polite"></pre>
+      </section>
+    </main>
+    <footer class="foot">作者：FDE WorkMate · <a href="./index.html">返回应用</a></footer>
+    <script type="module" src="./src/bench.js"></script>
+  </body>
+</html>

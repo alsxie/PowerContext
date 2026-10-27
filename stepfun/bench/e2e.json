@@ -1,0 +1,48 @@
+{
+  "author": "FDE WorkMate",
+  "at": "2026-10-27T18:30:12.669Z",
+  "results": [
+    {
+      "case": "webgpu-available",
+      "badge": "当前后端：WebGPU · fp16",
+      "detail": "GPU：apple metal-3，支持 shader-f16",
+      "import1": "完成：1500 段 · 向量化 3638 ms（412.3 段/s，webgpu） · seekdb 写入 3424 ms · 刷新 205 ms + 可见校验 28 ms · 总计 4.62 s",
+      "searchTiming": "hybrid · 10 条 · 查询向量化 14.9 ms（webgpu）· seekdb 检索 14.0 ms · 传输 1.8 ms · 端到端 30.8 ms",
+      "incremental": {
+        "query": "什么是KYC？ KYC 是一个缩写，代表了解您的客户。它是一个监管短语，指的是企",
+        "relevant": [
+          "p11461"
+        ],
+        "hitBefore": false,
+        "hitAfter": true
+      },
+      "restored": {
+        "kb": "e2e-webgpu-mvr0s631",
+        "q": "什么是KYC？ KYC 是一个缩写，代表了解您的客户。它是一个监管短语，指的是企"
+      },
+      "externalRequests": [],
+      "ok": true
+    },
+    {
+      "case": "webgpu-unavailable",
+      "badge": "当前后端：WASM（CPU）· int8",
+      "detail": "已自动降级到 WASM：navigator.gpu.requestAdapter() 返回 null（无可用 GPU 适配器）",
+      "import1": "完成：1500 段 · 向量化 26509 ms（56.6 段/s，wasm） · seekdb 写入 8537 ms · 刷新 329 ms + 可见校验 26 ms · 总计 27.59 s",
+      "searchTiming": "hybrid · 10 条 · 查询向量化 15.7 ms（wasm）· seekdb 检索 27.4 ms · 传输 3.6 ms · 端到端 46.7 ms",
+      "incremental": {
+        "query": "什么是KYC？ KYC 是一个缩写，代表了解您的客户。它是一个监管短语，指的是企",
+        "relevant": [
+          "p11461"
+        ],
+        "hitBefore": false,
+        "hitAfter": true
+      },
+      "restored": {
+        "kb": "e2e-wasm-mvr0sdkn",
+        "q": "什么是KYC？ KYC 是一个缩写，代表了解您的客户。它是一个监管短语，指的是企"
+      },
+      "externalRequests": [],
+      "ok": true
+    }
+  ]
+}

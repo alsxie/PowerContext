@@ -1,0 +1,11 @@
+# 作者：FDE WorkMate
+node_modules/
+.venv/
+.cache/
+.runtime/
+web/dist/
+# 模型文件由 scripts/prepare_model.py 下载并量化生成（体积大，不入库）；manifest.json 入库作为体积/sha256 记录
+models/*
+!models/manifest.json
+*.tmp.mjs
+__pycache__/

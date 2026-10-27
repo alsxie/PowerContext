@@ -1,0 +1,23 @@
+{
+  "name": "stepfun-edge-kb",
+  "version": "1.0.0",
+  "private": true,
+  "description": "端侧向量化 + seekdb 混合检索的迷你知识库（作者：FDE WorkMate）",
+  "author": "FDE WorkMate",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite",
+    "start": "node server/index.mjs",
+    "bench": "node scripts/bench.mjs",
+    "test": "node --test server/test/*.test.mjs"
+  },
+  "dependencies": {
+    "seekdb": "1.4.0"
+  },
+  "devDependencies": {
+    "@huggingface/transformers": "4.3.1",
+    "playwright-core": "1.64.1",
+    "vite": "8.3.5"
+  }
+}

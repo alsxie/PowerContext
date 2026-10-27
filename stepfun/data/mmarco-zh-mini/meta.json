@@ -1,0 +1,38 @@
+{
+  "author": "FDE WorkMate",
+  "name": "mmarco-zh-mini",
+  "sources": {
+    "corpus": {
+      "repo": "C-MTEB/MMarcoRetrieval",
+      "revision": "539bbde593d947e2a124ba72651aafc09eb33fc2",
+      "file": "data/corpus-00000-of-00001-b8cdf7f89c113423.parquet"
+    },
+    "queries": {
+      "repo": "C-MTEB/MMarcoRetrieval",
+      "revision": "539bbde593d947e2a124ba72651aafc09eb33fc2",
+      "file": "data/queries-00000-of-00001-4542b172a462173e.parquet"
+    },
+    "qrels": {
+      "repo": "C-MTEB/MMarcoRetrieval-qrels",
+      "revision": "bae08bb7bddbedb96c7e7db52018a55167b67f89",
+      "file": "data/dev-00000-of-00001-6c20deed08d304e4.parquet"
+    }
+  },
+  "split": "dev",
+  "seed": 20261028,
+  "n_queries": 100,
+  "n_docs": 2000,
+  "n_positive": 107,
+  "n_hard_negative": 768,
+  "hard_negative_method": "char-bigram BM25 top-8 per query (excluding positives)",
+  "batch_sizes": {
+    "1": 1500,
+    "2": 500
+  },
+  "queries_needing_batch2": 30,
+  "doc_chars": {
+    "median": 98,
+    "max": 494,
+    "total": 224872
+  }
+}

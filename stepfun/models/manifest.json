@@ -1,0 +1,63 @@
+{
+  "author": "FDE WorkMate",
+  "model_id": "Xenova/bge-small-zh-v1.5",
+  "upstream": "BAAI/bge-small-zh-v1.5",
+  "license": "MIT",
+  "revision": "75c43b069aac4d136ba6bc1122f995fedcfd2781",
+  "endpoint": "https://hf-mirror.com",
+  "pooling": "cls",
+  "normalize": true,
+  "dimension": 512,
+  "variants": {
+    "fp32": {
+      "file": "onnx/model.onnx",
+      "bytes": 94851877,
+      "mb": 90.46,
+      "compression_ratio": 1.0,
+      "sha256": "69a0b846f4f116b5e6aabf9546ea6754d02264f3211a13a1bd69b31b8040749a"
+    },
+    "fp16": {
+      "file": "onnx/model_fp16.onnx",
+      "bytes": 47497427,
+      "mb": 45.3,
+      "compression_ratio": 1.997,
+      "sha256": "8e785b3017e6ab0b78310118ead69ffed5a6049b67f6ac1350eabccc8f1bf6bc"
+    },
+    "int8": {
+      "file": "onnx/model_int8.onnx",
+      "bytes": 24011364,
+      "mb": 22.9,
+      "compression_ratio": 3.95,
+      "sha256": "3878b70c12c509d4ada124df758cbeebf331a4f174b0d47a30bea5dc41aab9a4"
+    },
+    "wq8": {
+      "file": "onnx/model_wq8.onnx",
+      "bytes": 25466883,
+      "mb": 24.29,
+      "compression_ratio": 3.725,
+      "sha256": "9f7ed2f650f6c648b5b7bde006db5c749c554f5313de61aa96851ee4e20c5e5b"
+    }
+  },
+  "quantization": {
+    "int8": "onnxruntime.quantization.quantize_dynamic(weight_type=QInt8, per_channel=True, op_types=[MatMul, Gemm, Gather])",
+    "fp16": "onnxruntime.transformers.float16.convert_float_to_float16(keep_io_types=True)",
+    "wq8": "Gather: quantize_dynamic(QInt8) + MatMul: MatMulNBitsQuantizer(bits=8, block_size=32, symmetric)"
+  },
+  "quantize_seconds": {
+    "wq8": 1.26
+  },
+  "offline_sanity": {
+    "fp16": {
+      "min_cosine_vs_fp32": 0.9999997019767761,
+      "mean_cosine_vs_fp32": 0.9999998211860657
+    },
+    "int8": {
+      "min_cosine_vs_fp32": 0.9953337907791138,
+      "mean_cosine_vs_fp32": 0.9958043098449707
+    },
+    "wq8": {
+      "min_cosine_vs_fp32": 0.9973901510238647,
+      "mean_cosine_vs_fp32": 0.9980225563049316
+    }
+  }
+}
