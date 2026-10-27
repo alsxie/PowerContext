@@ -101,6 +101,7 @@ _STOPWORDS = frozenset([
     "for",
     "formerly",
     "from",
+    "fy",
     "give",
     "had",
     "has",
@@ -231,18 +232,7 @@ _STOPWORDS = frozenset([
     "thousands",
     "analyst",
     "analysts",
-    "investment",
-    "banker",
-    "equity",
-    "research",
-    "public",
-    "equities",
     "financial",
-    "connection",
-    "internet",
-    "providers",
-    "lost",
-    "access",
     "conclusions",
     "agreement",
     "items",
@@ -270,7 +260,11 @@ _EXPANSIONS: tuple[tuple[str, str], ...] = (
     (r"\bcogs\b|cost of goods", "cost of sales cost of goods sold cost of revenue"),
     (r"revenue|top ?line|\bsales\b", "revenue revenues net sales total"),
     (r"\beps\b", "earnings per share diluted"),
-    (r"pp ?& ?e|\bppne\b|fixed asset|capital.intensive", "property plant equipment net"),
+    (r"pp ?& ?e|\bppne\b|fixed asset", "property plant equipment net"),
+    (
+        r"capital.intensi|capital intensity|asset.(light|heavy)",
+        "capital expenditures purchases property plant equipment net total assets depreciation",
+    ),
     (r"\bar\b|receivable|\bdso\b", "accounts receivable net"),
     (r"inventor|\bdio\b", "inventories inventory"),
     (r"payable|\bdpo\b", "accounts payable"),
@@ -278,8 +272,7 @@ _EXPANSIONS: tuple[tuple[str, str], ...] = (
     (r"working capital", "current assets current liabilities working capital"),
     (r"\broa\b|return on assets|total assets", "total assets net income"),
     (r"\bdebt\b|borrow", "debt long term borrowings notes"),
-    (r"dividend|payout", "dividends paid cash dividends declared"),
-    (r"retention", "dividends net income"),
+    (r"dividend|payout|retention ratio", "dividends paid cash dividends declared net income"),
     (
         r"cash flow|operating activities|financing activities|investing activities|\bfcf\b",
         "net cash provided by operating investing financing activities",
@@ -288,23 +281,29 @@ _EXPANSIONS: tuple[tuple[str, str], ...] = (
     (r"legal|litigation|lawsuit", "legal proceedings litigation lawsuits claims contingencies"),
     (r"geograph|region", "geographic regions international countries north america europe asia latin america"),
     (r"product|services", "products services segments brands"),
-    (r"customer", "customers customer revenue accounted significant portion government contracts"),
-    (r"concentration", "concentration significant customer accounted percent revenue"),
-    (r"\bretain|retention", "retention retained"),
+    (
+        r"customer",
+        "one customer accounted for revenue we derive a significant substantial portion of our revenues from customers",
+    ),
+    (r"concentration", "concentration significant customer accounted for revenue"),
     (r"\bdr(ove|ive|iven|ivers?)\b|\bwhy\b|\breasons?\b", "primarily due driven increase decrease compared"),
     (r"turnover", "cost of sales inventories revenue average"),
-    (r"acqui|m ?& ?a\b", "acquisition acquisitions acquired business combinations"),
+    (r"acqui|m ?& ?a\b|divest", "acquisition acquisitions acquired business combinations divestitures"),
     (r"restructuring", "restructuring impairment charges"),
-    (
-        r"securities registered|national securities exchange|trade on",
-        "securities registered pursuant section 12 b trading symbol exchange notes due",
-    ),
     (r"segment", "segment segments reportable operating"),
-    (r"cyclical", "cyclical cycles economic conditions demand"),
-    (r"production rate", "production rates deliveries per month"),
     (r"growth|grow", "growth increase increased compared"),
     (r"guidance|outlook", "guidance outlook expects"),
 )
+
+# "Excluding acquisitions/divestitures/currency" asks for organic figures; the
+# excluded concept must not pull its own disclosures to the top.
+_EXCLUDED_EFFECTS = re.compile(
+    r"\b(?:exclud\w*|ignor\w*|net of|without|apart from|other than)\s+(?:the\s+)?"
+    r"(?:(?:impact|effect|contribution)s?\s+of\s+)?(?:the\s+)?"
+    r"(?:m ?& ?a\b|mergers? and acquisitions?|acquisitions?|divestitures?|currency|foreign exchange|fx\b)"
+    r"(?:\s*(?:and|or|,)\s*(?:m ?& ?a\b|acquisitions?|divestitures?|currency|foreign exchange|fx\b))*"
+)
+_ORGANIC_EXPANSION = "organic sales growth change"
 
 _STATEMENTS: dict[str, re.Pattern[str]] = {
     "income": re.compile(
@@ -321,21 +320,35 @@ _QUESTION_STATEMENTS: tuple[tuple[str, str], ...] = (
     (r"\bcapex\b|capital expenditure|\bd ?& ?a\b|depreciation|ebitda|cash from operations|\bfcf\b|free cash", "cash"),
     (r"operating activities|financing activities|investing activities|dividends paid|cash dividends", "cash"),
     (r"\bcogs\b|revenue|net income|operating income|operating margin|gross margin|net profit|\beps\b", "income"),
+    # Capital intensity relates capital spending and fixed assets to revenue.
+    (r"capital.intensi|capital intensity|asset.(light|heavy)", "cash"),
+    (r"capital.intensi|capital intensity|asset.(light|heavy)", "balance"),
+    (r"capital.intensi|capital intensity|asset.(light|heavy)", "income"),
     (r"\bppne\b|pp ?& ?e|total assets|current assets|current liabilities|working capital|quick ratio", "balance"),
     (r"inventor|accounts payable|receivable|\broa\b|largest liability", "balance"),
     (r"turnover|\broa\b|return on assets|\bdpo\b|\bdso\b|\bdio\b|conversion cycle", "income"),
 )
 
 
-def _stem(token: str) -> str:
-    if token.isdigit() or len(token) <= 3:
-        return token
-    for suffix, replacement in (("ies", "y"), ("sses", "ss"), ("ing", ""), ("ed", ""), ("es", "e"), ("s", "")):
+_PLURAL_SUFFIXES = (("ies", "y"), ("sses", "ss"), ("es", "e"), ("s", ""))
+_VERB_SUFFIXES = (("ality", "al"), ("ing", ""), ("ed", ""))
+
+
+def _strip_suffix(token: str, suffixes: tuple[tuple[str, str], ...]) -> str:
+    for suffix, replacement in suffixes:
         if token.endswith(suffix) and len(token) - len(suffix) >= 3:
             if suffix == "s" and token.endswith(("ss", "us", "is")):
                 return token
             return token[: len(token) - len(suffix)] + replacement
     return token
+
+
+def _stem(token: str) -> str:
+    # Light stemming: a plural ending first, then one derivational/verbal ending,
+    # so "proceedings", "proceeding" and "proceed" share one term.
+    if token.isdigit() or len(token) <= 3:
+        return token
+    return _strip_suffix(_strip_suffix(token, _PLURAL_SUFFIXES), _VERB_SUFFIXES)
 
 
 def _terms(text: str) -> list[str]:
@@ -373,9 +386,11 @@ def _statement_kinds(body: str) -> frozenset[str]:
     if not tokens:
         return frozenset()
     numeric = sum(token.isdigit() for token in tokens) / len(tokens)
-    if numeric < 0.25 or "notes to" in head or "index to" in head:
+    if numeric < 0.25 or "notes to" in head:
         return frozenset()
-    return frozenset(kind for kind, pattern in _STATEMENTS.items() if pattern.search(head))
+    kinds = frozenset(kind for kind, pattern in _STATEMENTS.items() if pattern.search(head))
+    # A page heading several statements is an index or table of contents.
+    return kinds if len(kinds) == 1 else frozenset()
 
 
 def _build_index(texts: Sequence[str]) -> _Index:
@@ -473,14 +488,21 @@ def _document_scores(question: str, documents: Sequence[str]) -> dict[str, float
     return scores
 
 
+_POSSESSIVE = re.compile(r"(?<=\w)['\u2019]s\b")
+
+
 def _query(question: str) -> tuple[Counter[str], frozenset[str]]:
-    lowered = question.lower()
-    core = [term for term in _terms(question) if term not in _STOP_TERMS]
+    lowered = _POSSESSIVE.sub("", question.lower())
+    expansions = []
+    if _EXCLUDED_EFFECTS.search(lowered):
+        lowered = _EXCLUDED_EFFECTS.sub(" ", lowered)
+        expansions.append(_ORGANIC_EXPANSION)
+    core = [term for term in _terms(lowered) if term not in _STOP_TERMS]
     query: Counter[str] = _features(core)
-    for pattern, expansion in _EXPANSIONS:
-        if re.search(pattern, lowered):
-            for feature, count in _features(_terms(expansion)).items():
-                query[feature] += 0.5 * count
+    expansions.extend(expansion for pattern, expansion in _EXPANSIONS if re.search(pattern, lowered))
+    for expansion in expansions:
+        for feature, count in _features(_terms(expansion)).items():
+            query[feature] += 0.5 * count
     kinds = frozenset(kind for pattern, kind in _QUESTION_STATEMENTS if re.search(pattern, lowered))
     return query, kinds
 
