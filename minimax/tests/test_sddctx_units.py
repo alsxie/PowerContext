@@ -72,3 +72,15 @@ def test_apply_files_returns_unified_diff(tmp_path):
     diff = apply_files(project, {"pkg/m.py": "a = 2\n"})
     assert "-a = 1" in diff and "+a = 2" in diff and "a/app/pkg/m.py" in diff
     assert (project / "pkg" / "m.py").read_text(encoding="utf-8") == "a = 2\n"
+
+
+def test_anthropic_reply_keeps_only_text_blocks():
+    from sddctx.agent import _merge_user_turns, _parse_anthropic
+
+    reply = _parse_anthropic(
+        {"id": "m1", "model": "MiniMax-M3.1-Flash", "stop_reason": "end_turn", "usage": {"output_tokens": 3},
+         "content": [{"type": "thinking", "thinking": "私有推理"}, {"type": "text", "text": "结果"}]}
+    )
+    assert reply["content"] == "结果" and reply["content_block_types"] == ["thinking", "text"]
+    merged = _merge_user_turns([{"role": "system", "content": "s"}, {"role": "user", "content": "a"}, {"role": "user", "content": "b"}])
+    assert merged == [{"role": "user", "content": "a\n\nb"}]

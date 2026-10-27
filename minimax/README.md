@@ -6,7 +6,7 @@
 
 - seekdb（嵌入式 `pylibseekdb`）保存并检索规格、代码、测试，全文检索使用 ngram 分词，支持中文；
 - PowerContext 1.2.0（本地 Server，seekdb 后端）保存任务进度、验证结果和交接状态，进程重启后读回继续；
-- MiniMax（OpenAI 兼容接口，默认 `MiniMax-M2`）读取生成的上下文，实际修改业务工程代码；
+- MiniMax（默认 Anthropic Messages 兼容接口 `https://api.minimax.cn/anthropic`，模型 `MiniMax-M3.1-Flash`；可切换为 OpenAI 兼容接口）读取生成的上下文，实际修改业务工程代码；
 - 修改前后各运行一次目标功能测试与回归测试，所有过程写入 `records/`。
 
 ## 目录
@@ -72,7 +72,7 @@ uv sync --frozen
 | `context-check.json` | 上下文核对结果 |
 | `db_queries.jsonl` | 每次 seekdb 查询：用途、SQL、参数、行数、命中条目、耗时 |
 | `powercontext_log.jsonl` / `powercontext_state.json` | PowerContext 写入/读取操作与最终状态（scope、handoff 版本、已完成/待办、验证结果） |
-| `minimax/attempt-N.*` | 每次 MiniMax 调用的请求、响应（模型、用量、耗时；不保存 `<think>` 段）与该次 diff |
+| `minimax/attempt-N.*` | 每次 MiniMax 调用的请求、响应（接口、模型、用量、耗时；只保存 text 内容块，不保存 thinking）与该次 diff |
 | `snapshots/before`、`snapshots/after`、`code.diff` | 修改前后代码快照与完整差异 |
 | `baseline-*`、`agent-attempt-*`、`verify-*` | 测试命令、退出码、junit XML、日志与汇总 |
 

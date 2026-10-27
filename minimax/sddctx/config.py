@@ -34,8 +34,10 @@ class Settings:
     runtime_dir: Path
     records_dir: Path
     powercontext_port: int
+    minimax_api_style: str
     minimax_base_url: str
     minimax_model: str
+    minimax_effort: str
     minimax_api_key: str | None
 
     @property
@@ -72,7 +74,10 @@ def load_settings() -> Settings:
         runtime_dir=_path(get("SDDCTX_RUNTIME_DIR", str(MINIMAX_ROOT / ".runtime"))),
         records_dir=_path(get("SDDCTX_RECORDS_DIR", str(MINIMAX_ROOT / "records"))),
         powercontext_port=int(get("SDDCTX_POWERCONTEXT_PORT", "18765") or "18765"),
-        minimax_base_url=get("MINIMAX_BASE_URL", "https://api.minimaxi.com/v1") or "",
-        minimax_model=get("MINIMAX_MODEL", "MiniMax-M2") or "",
+        # 默认使用 MiniMax 推荐的 Anthropic Messages 兼容接口；设置 MINIMAX_API_STYLE=openai 可改走 Chat Completions。
+        minimax_api_style=get("MINIMAX_API_STYLE", "anthropic") or "anthropic",
+        minimax_base_url=get("MINIMAX_BASE_URL", "https://api.minimax.cn/anthropic") or "",
+        minimax_model=get("MINIMAX_MODEL", "MiniMax-M3.1-Flash") or "",
+        minimax_effort=get("MINIMAX_EFFORT", "high") or "",
         minimax_api_key=get("MINIMAX_API_KEY"),
     )
