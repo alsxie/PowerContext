@@ -784,9 +784,6 @@ def _stored_utc(value: datetime) -> datetime:
     return value.astimezone(UTC).replace(tzinfo=None)
 
 
-__all__ = ["TopicMemoryRepository"]
-
-
 async def _without_suppressed_topics(
     connection: AsyncConnection,
     scope_id: str,
@@ -803,3 +800,6 @@ async def _without_suppressed_topics(
             for name in ("topic_fts", "topic_vector", "detail_fts", "detail_vector")
         }
     )
+
+
+__all__ = ["TopicMemoryRepository"]
