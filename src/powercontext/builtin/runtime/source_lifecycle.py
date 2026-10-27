@@ -132,7 +132,7 @@ class SourceLifecycleApplication:
         self._runtime = runtime
         self._repository = repository
 
-    def for_scope(self, scope_id: str, /) -> ScopedSourceLifecycleService:
+    def for_scope(self, scope_id: str) -> ScopedSourceLifecycleService:
         if self._repository is None:
             raise SourceLifecycleError("source lifecycle storage is not configured")  # noqa: TRY003
         return ScopedSourceLifecycleService(self._runtime, self._repository, scope_id)
@@ -146,7 +146,7 @@ class ScopedSourceLifecycleService:
         self._repository = repository
         self.scope_id = validate_scope_id(scope_id)
 
-    async def register_source(self, node_id: str, source_ref: SourceRef, /, *, revision: int) -> bool:
+    async def register_source(self, node_id: str, source_ref: SourceRef, *, revision: int) -> bool:
         """Bind a captured Source; Sources start available. Return current availability."""
 
         node_id = _node_id(node_id)
@@ -177,7 +177,6 @@ class ScopedSourceLifecycleService:
         self,
         node_id: str,
         citation: MemoryCitation,
-        /,
         *,
         parents: Sequence[str],
         policy: LifecyclePolicy,
@@ -223,7 +222,6 @@ class ScopedSourceLifecycleService:
         self,
         node_id: str,
         artifact_ref: ArtifactRef,
-        /,
         *,
         parents: Sequence[str],
         policy: LifecyclePolicy,
@@ -262,8 +260,13 @@ class ScopedSourceLifecycleService:
             await self._repository.insert_node(self.scope_id, node)
             return node.available
 
-    async def apply(self, event: SourceLifecycleEvent, /) -> list[str]:
-        """Apply or replay one Source event and return every available node id, sorted."""
+    async def apply(self, event: SourceLifecycleEvent) -> list[str]:
+        """Apply or replay one Source event and return every available node id, sorted.
+
+        Replaying any already recorded event (same sequence and content) is an
+        idempotent no-op that re-reconciles native state; unseen lower sequences
+        and same-sequence events with different content are rejected.
+        """
 
         if not isinstance(event, SourceLifecycleEvent):
             raise SourceLifecycleError("event must be a SourceLifecycleEvent")  # noqa: TRY003
@@ -300,7 +303,7 @@ class ScopedSourceLifecycleService:
             await self._reconcile_memory(context.artifacts.memory, context.artifacts.memory_artifact_id, nodes)
             return sorted(node_id for node_id, available in states.items() if available)
 
-    async def resolve(self, node_id: str, /, *, purpose: LifecyclePurpose) -> SourceRef | MemoryCitation | ArtifactRef:
+    async def resolve(self, node_id: str, *, purpose: LifecyclePurpose) -> SourceRef | MemoryCitation | ArtifactRef:
         """Return the registered reference; ``generation`` requires the node to be available."""
 
         if purpose not in _PURPOSES:
