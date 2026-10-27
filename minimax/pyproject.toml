@@ -1,0 +1,27 @@
+# 作者：FDE WorkMate
+[project]
+name = "sddctx"
+version = "0.1.0"
+description = "SDD 工程上下文模块：seekdb 检索规格/代码/测试，PowerContext 保存任务状态，MiniMax 完成代码修改"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "powercontext[cli,server,seekdb]==1.2.0",
+    "pylibseekdb==1.4.0.post1",
+    "pymysql==1.1.2",
+    "httpx==0.28.1",
+    "pytest==8.4.2",
+]
+
+[project.scripts]
+sddctx = "sddctx.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["sddctx"]
+
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true

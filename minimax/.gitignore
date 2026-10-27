@@ -1,0 +1,7 @@
+# 作者：FDE WorkMate
+.venv/
+.runtime/
+.work/
+.env.local
+__pycache__/
+*.pyc
